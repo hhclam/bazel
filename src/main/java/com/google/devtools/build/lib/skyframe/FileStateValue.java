@@ -157,7 +157,7 @@ public abstract class FileStateValue implements SkyValue {
     }
 
     /**
-     * Create a FileFileStateValue instance corresponding to the given existing file.
+     * Create a RegularFileStateValue instance corresponding to the given existing file.
      * @param stat must be of type "File". (Not a symlink).
      */
     private static RegularFileStateValue fromPath(Path path, FileStatusWithDigest stat,
