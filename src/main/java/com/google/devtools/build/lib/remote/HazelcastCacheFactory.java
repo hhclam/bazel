@@ -1,3 +1,17 @@
+// Copyright 2016 The Bazel Authors. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package com.google.devtools.build.lib.remote;
 
 import com.hazelcast.cache.HazelcastCachingProvider;
@@ -32,19 +46,19 @@ public class HazelcastCacheFactory {
 
     Properties prop = new Properties();
     if (options.hazelcastConfiguration != null) {
-        // Hazelcast client is very weird that the URI passed to caching provider is not the actual
-        // configuration file. The location to the configuration file is passed through properties.
-        // The same for the instance name.
-        prop.setProperty(HazelcastCachingProvider.HAZELCAST_CONFIG_LOCATION,
-                         options.hazelcastConfiguration);
+      // Hazelcast client is very weird that the URI passed to caching provider is not the actual
+      // configuration file. The location to the configuration file is passed through properties.
+      // The same for the instance name.
+      prop.setProperty(HazelcastCachingProvider.HAZELCAST_CONFIG_LOCATION,
+                       options.hazelcastConfiguration);
     }
     if (options.hazelcastNode != null) {
-        ClientConfig config = new ClientConfig();
-        ClientNetworkConfig net = config.getNetworkConfig();
-        net.addAddress(options.hazelcastNode.split(","));
-        HazelcastInstance instance = HazelcastClient.newHazelcastClient(config);
-        prop.setProperty(HazelcastCachingProvider.HAZELCAST_INSTANCE_NAME,
-                         instance.getName());
+      ClientConfig config = new ClientConfig();
+      ClientNetworkConfig net = config.getNetworkConfig();
+      net.addAddress(options.hazelcastNode.split(","));
+      HazelcastInstance instance = HazelcastClient.newHazelcastClient(config);
+      prop.setProperty(HazelcastCachingProvider.HAZELCAST_INSTANCE_NAME,
+                       instance.getName());
     }
     
     final CacheManager cacheManager = cachingProvider.getCacheManager(
@@ -55,9 +69,9 @@ public class HazelcastCacheFactory {
 
     MutableConfiguration<String, byte[]> config = new MutableConfiguration<String, byte[]>();
     config.setStoreByValue(true)
-            .setTypes(String.class, byte[].class)
-            .setExpiryPolicyFactory(AccessedExpiryPolicy.factoryOf(Duration.ONE_HOUR))
-            .setStatisticsEnabled(false);
+        .setTypes(String.class, byte[].class)
+        .setExpiryPolicyFactory(AccessedExpiryPolicy.factoryOf(Duration.ONE_HOUR))
+        .setStatisticsEnabled(false);
     return cacheManager.createCache(CACHE_NAME, config);
   }
 }

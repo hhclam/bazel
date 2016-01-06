@@ -1,3 +1,17 @@
+// Copyright 2016 The Bazel Authors. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package com.google.devtools.build.lib.remote;
 
 import com.google.common.collect.ImmutableMap;
@@ -66,8 +80,8 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
       Path file = execRoot.getRelative(input.getExecPathString());
            
       if (file.isDirectory()) {
-          // TODO(alpha): Need to handle these cases.
-          continue;
+        // TODO(alpha): Need to handle these cases.
+        continue;
       }
  
       String contentKey = cache.putFileIfNotExist(file);
@@ -91,43 +105,43 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
    * Submit a work in the form of protobuf. This method executes the work locally.
    */
   public ListenableFuture<Response> submit(RemoteWorkRequest work) throws IOException {
-      return executorService.submit(new Callable<Response>(){
-         public Response call() throws IOException {
-           ByteArrayOutputStream stdout = new ByteArrayOutputStream();
-           ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-           try {
-              // Prepare directories and input files.
-              for (FileEntry input : work.getInputFilesList()) {
-                  Path file = execRoot.getRelative(input.getPath());
-                  FileSystemUtils.createDirectoryAndParents(file.getParentDirectory());
-                  cache.writeFile(input.getContentKey(), file, input.getExecutable());
-              }
+    return executorService.submit(new Callable<Response>(){
+        public Response call() throws IOException {
+          ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+          ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+          try {
+            // Prepare directories and input files.
+            for (FileEntry input : work.getInputFilesList()) {
+              Path file = execRoot.getRelative(input.getPath());
+              FileSystemUtils.createDirectoryAndParents(file.getParentDirectory());
+              cache.writeFile(input.getContentKey(), file, input.getExecutable());
+            }
 
-              // Prepare directories for output files.
-              List<Path> outputs = new ArrayList<>();
-              for (FileEntry output : work.getOutputFilesList()) {
-                  Path file = execRoot.getRelative(output.getPath());
-                  outputs.add(file);
-                  FileSystemUtils.createDirectoryAndParents(file.getParentDirectory());
-              }
+            // Prepare directories for output files.
+            List<Path> outputs = new ArrayList<>();
+            for (FileEntry output : work.getOutputFilesList()) {
+              Path file = execRoot.getRelative(output.getPath());
+              outputs.add(file);
+              FileSystemUtils.createDirectoryAndParents(file.getParentDirectory());
+            }
               
-              Command cmd = new Command(work.getArgumentsList().toArray(new String[]{}),
-                                work.getEnvironment(),
-                                new File(execRoot.getPathString()));
-              CommandResult result = cmd.execute(Command.NO_INPUT,
-                                                 Command.NO_OBSERVER,
-                                                 stdout,
-                                                 stderr,
-                                                 true);
-              cache.putActionOutput(work.getOutputKey(), execRoot, outputs);
-              return new Response(result.getTerminationStatus().success(),
-                                  stdout.toString(),
-                                  stderr.toString(),
-                                  "");
-             } catch (CommandException e) {
-               return new Response(false, stdout.toString(), stderr.toString(), e.toString());
-             }
-         }
+            Command cmd = new Command(work.getArgumentsList().toArray(new String[]{}),
+                                      work.getEnvironment(),
+                                      new File(execRoot.getPathString()));
+            CommandResult result = cmd.execute(Command.NO_INPUT,
+                                               Command.NO_OBSERVER,
+                                               stdout,
+                                               stderr,
+                                               true);
+            cache.putActionOutput(work.getOutputKey(), execRoot, outputs);
+            return new Response(result.getTerminationStatus().success(),
+                                stdout.toString(),
+                                stderr.toString(),
+                                "");
+          } catch (CommandException e) {
+            return new Response(false, stdout.toString(), stderr.toString(), e.toString());
+          }
+        }
       });
   }
 }

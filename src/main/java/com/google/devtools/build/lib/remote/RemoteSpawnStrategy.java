@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2016 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package com.google.devtools.build.lib.remote;
 
 import com.google.common.collect.ImmutableMap;
@@ -91,12 +92,12 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
   private final RemoteWorkExecutor remoteWorkExecutor;
 
   public RemoteSpawnStrategy(
-        Map<String, String> clientEnv,
-        Path execRoot,
-        RemoteOptions options,
-        boolean verboseFailures,
-        RemoteActionCache actionCache,
-        RemoteWorkExecutor workExecutor) {
+      Map<String, String> clientEnv,
+      Path execRoot,
+      RemoteOptions options,
+      boolean verboseFailures,
+      RemoteActionCache actionCache,
+      RemoteWorkExecutor workExecutor) {
     this.verboseFailures = verboseFailures;
     this.execRoot = execRoot;
     this.standaloneStrategy = new StandaloneSpawnStrategy(execRoot, verboseFailures);
@@ -110,10 +111,10 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
    */
   @Override
   public void exec(Spawn spawn,
-      ActionExecutionContext actionExecutionContext) throws ExecException {
+                   ActionExecutionContext actionExecutionContext) throws ExecException {
     if (!spawn.isRemotable()) {
-        standaloneStrategy.exec(spawn, actionExecutionContext);
-        return;
+      standaloneStrategy.exec(spawn, actionExecutionContext);
+      return;
     }
 
     final Executor executor = actionExecutionContext.getExecutor();
@@ -131,19 +132,19 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     hasher.putString(actionMetadata.getKey(), Charset.defaultCharset());
     
     List<ActionInput> inputs =
-            ActionInputHelper.expandMiddlemen(
-                spawn.getInputFiles(), actionExecutionContext.getMiddlemanExpander());
+        ActionInputHelper.expandMiddlemen(
+            spawn.getInputFiles(), actionExecutionContext.getMiddlemanExpander());
     for (ActionInput input : inputs) {
-        hasher.putString(input.getExecPathString(), Charset.defaultCharset());
-        try {
-            // TODO(alpha): The digest from ActionInputFileCache is used to detect local file
-            // changes. It might not be sufficient to identify the input file globally in the
-            // remote action cache. Consider upgrading this to a better hash algorithm with
-            // less collision.
-            hasher.putBytes(inputFileCache.getDigest(input).toByteArray());
-        } catch (IOException e) {
-            // TODO(alpha: Don't care now. I should find out how this happens.
-        }
+      hasher.putString(input.getExecPathString(), Charset.defaultCharset());
+      try {
+        // TODO(alpha): The digest from ActionInputFileCache is used to detect local file
+        // changes. It might not be sufficient to identify the input file globally in the
+        // remote action cache. Consider upgrading this to a better hash algorithm with
+        // less collision.
+        hasher.putBytes(inputFileCache.getDigest(input).toByteArray());
+      } catch (IOException e) {
+        // TODO(alpha: Don't care now. I should find out how this happens.
+      }
     }
 
     // Save the action output if found in the remote action cache.
@@ -161,29 +162,29 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     }
 
     try {
-        if (false && writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
-            return;
+      if (false && writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
+        return;
 
-        FileOutErr outErr = actionExecutionContext.getFileOutErr();
-        if (executeWorkRemotely(spawn.getMnemonic(),
-                                actionOutputKey,
-                                spawn.getArguments(),
-                                inputs,
-                                spawn.getEnvironment(),
-                                spawn.getOutputFiles(),
-                                timeout,
-                                eventHandler,
-                                outErr)) {
-            return;
-        }
+      FileOutErr outErr = actionExecutionContext.getFileOutErr();
+      if (executeWorkRemotely(spawn.getMnemonic(),
+                              actionOutputKey,
+                              spawn.getArguments(),
+                              inputs,
+                              spawn.getEnvironment(),
+                              spawn.getOutputFiles(),
+                              timeout,
+                              eventHandler,
+                              outErr)) {
+        return;
+      }
         
-        // If nothing works then run spawn locally.
-        standaloneStrategy.exec(spawn, actionExecutionContext);
-        if (remoteActionCache != null) {
-            remoteActionCache.putActionOutput(actionOutputKey, spawn.getOutputFiles());
-        }
+      // If nothing works then run spawn locally.
+      standaloneStrategy.exec(spawn, actionExecutionContext);
+      if (remoteActionCache != null) {
+        remoteActionCache.putActionOutput(actionOutputKey, spawn.getOutputFiles());
+      }
     } catch (IOException e) {
-        throw new UserExecException("Unexpected IO error.", e);
+      throw new UserExecException("Unexpected IO error.", e);
     }
   }
 
@@ -199,7 +200,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
                                       int timeout,
                                       EventHandler eventHandler,
                                       FileOutErr outErr)
-          throws IOException {
+      throws IOException {
     if (remoteWorkExecutor == null)
       return false;
     try {
@@ -213,26 +214,26 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
           timeout);
       RemoteWorkExecutor.Response response = future.get(timeout, TimeUnit.SECONDS);
       if (!response.success()) {
-          eventHandler.handle(Event.warn(mnemonic + " remote work failed. Running locally"));
-          return false;
+        eventHandler.handle(Event.warn(mnemonic + " remote work failed. Running locally"));
+        return false;
       }
       if (response.getOut() != null)
-          outErr.printOut(response.getOut());
+        outErr.printOut(response.getOut());
       if (response.getErr() != null)
-          outErr.printErr(response.getErr());
+        outErr.printErr(response.getErr());
     } catch (ExecutionException e) {
-        eventHandler.handle(
-            Event.warn(mnemonic + " failed to execute work remotely (" + e + "). Running locally"));
-        return false;
+      eventHandler.handle(
+          Event.warn(mnemonic + " failed to execute work remotely (" + e + "). Running locally"));
+      return false;
     } catch (TimeoutException e) {
-        eventHandler.handle(
-            Event.warn(mnemonic + " timed out executing work remotely (" + e +
-                       "). Running locally"));
-        return false;
+      eventHandler.handle(
+          Event.warn(mnemonic + " timed out executing work remotely (" + e +
+                     "). Running locally"));
+      return false;
     } catch (InterruptedException e) {
-        eventHandler.handle(
-            Event.warn(mnemonic + " remote work interrupted (" + e + ")"));
-        return false;
+      eventHandler.handle(
+          Event.warn(mnemonic + " remote work interrupted (" + e + ")"));
+      return false;
     }      
     return writeActionOutput(mnemonic, actionOutputKey, eventHandler, false);
   }
@@ -242,7 +243,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
    */
   private boolean writeActionOutput(String mnemonic, String actionOutputKey,
                                     EventHandler eventHandler, boolean ignoreCacheNotFound)
-          throws IOException {
+      throws IOException {
     if (remoteActionCache == null)
       return false;
     try {
@@ -253,8 +254,8 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
       return true;
     } catch (CacheNotFoundException e) {
       if (!ignoreCacheNotFound) {
-          eventHandler.handle(
-              Event.warn(mnemonic + " some cache entries cannot be found (" + e + ")"));
+        eventHandler.handle(
+            Event.warn(mnemonic + " some cache entries cannot be found (" + e + ")"));
       }
     }
     return false;
