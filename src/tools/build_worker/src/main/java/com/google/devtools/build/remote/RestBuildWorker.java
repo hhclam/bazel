@@ -4,6 +4,7 @@ import com.google.devtools.build.lib.remote.HazelcastCacheFactory;
 import com.google.devtools.build.lib.remote.RemoteOptions;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.vfs.FileSystem;
+import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.JavaIoFileSystem;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.UnixFileSystem;
@@ -30,26 +31,32 @@ public class RestBuildWorker
         BuildWorkerOptions buildWorkerOptions = parser.getOptions(BuildWorkerOptions.class);
 
         if (remoteOptions.memcacheProvider == null ||
+            remoteOptions.memcacheUri == null ||
             remoteOptions.hazelcastConfiguration == null ||
             buildWorkerOptions.workPath == null) {
             printUsage(parser);
             return;
         }
 
-        Path workPath = getFileSystem().getPath(buildWorkerOptions.workPath);
+        System.out.println("Starting Hazelcast server...");
         Cache<String, byte[]> cache = new HazelcastCacheFactory().create(remoteOptions);
 
         // Initialize the jetty server.
         ServletContextHandler context = new ServletContextHandler(
             ServletContextHandler.NO_SESSIONS);
         context.setContextPath("/");
+        Path workPath = getFileSystem().getPath(buildWorkerOptions.workPath);
+        FileSystemUtils.createDirectoryAndParents(workPath);
+        
         Server server = new Server(8080);
         server.setHandler(context);
         context.addServlet(new ServletHolder(new BuildRequestServlet(
             workPath,
+            remoteOptions,
             buildWorkerOptions,
             cache)), "/build-request");
 
+        System.out.println("Starting Jetty server...");
         server.start();
         server.join();
     }

@@ -12,6 +12,7 @@ filegroup(
     }),
     visibility = [
         "//src/test/java:__pkg__",
+        "//src/tools/build_worker:__pkg__",
         "//src/tools/generate_workspace:__pkg__",
     ],
 )

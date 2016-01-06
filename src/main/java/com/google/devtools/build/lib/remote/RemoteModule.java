@@ -15,7 +15,11 @@ package com.google.devtools.build.lib.remote;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.eventbus.Subscribe;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.devtools.build.lib.actions.ActionContextProvider;
+import com.google.devtools.build.lib.events.Event;
+import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildStartingEvent;
 import com.google.devtools.build.lib.runtime.BlazeModule;
@@ -23,17 +27,42 @@ import com.google.devtools.build.lib.runtime.Command;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.common.options.OptionsBase;
 
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+
 /**
- * RemoteModule provides pluggable functionality for blaze.
+ * RemoteModule provides distributed cache and remote execution for Bazel.
  */
 public class RemoteModule extends BlazeModule {
   private CommandEnvironment env;
   private BuildRequest buildRequest;
+  private RemoteActionCache actionCache = null;
+  private RemoteWorkExecutor workExecutor = null;
+  private final ListeningExecutorService executorService;
+
+  public RemoteModule() {
+    // Create a pool of daemon threads for the work executor.
+    executorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(5,
+      new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable runnable) {
+          Thread thread = Executors.defaultThreadFactory().newThread(runnable);
+          thread.setDaemon(true);
+          return thread;
+        }
+      }));
+  }
 
   @Override
   public Iterable<ActionContextProvider> getActionContextProviders() {
-    return ImmutableList.<ActionContextProvider>of(
-        new RemoteActionContextProvider(env, buildRequest));
+    if (actionCache != null) {
+        return ImmutableList.<ActionContextProvider>of(
+            new RemoteActionContextProvider(env, buildRequest, actionCache, workExecutor));
+    }
+    return ImmutableList.<ActionContextProvider>of();
   }
 
   @Override
@@ -51,6 +80,26 @@ public class RemoteModule extends BlazeModule {
   @Subscribe
   public void buildStarting(BuildStartingEvent event) {
     buildRequest = event.getRequest();
+    RemoteOptions options = buildRequest.getOptions(RemoteOptions.class);
+
+    // Don't provide the remote spawn unless at least action cache is initialized.
+    if (actionCache == null && (
+            options.memcacheProvider != null &&
+            (options.hazelcastConfiguration != null || options.hazelcastNode != null))) {
+      MemcacheActionCache cache = new MemcacheActionCache(
+          this.env.getRuntime().getExecRoot(), options,
+          new HazelcastCacheFactory().create(options));
+      actionCache = cache;
+      if (workExecutor == null && options.restWorkerUrl != null) {
+          try {
+              workExecutor = new RestWorkExecutor(
+                  cache, executorService, new URL(options.restWorkerUrl));
+          } catch (MalformedURLException e) {
+              env.getReporter().handle(
+                  Event.warn("Not a valid value for --rest_worker_url. Work will run locally."));
+          }
+      }
+    }
   }
 
   @Override

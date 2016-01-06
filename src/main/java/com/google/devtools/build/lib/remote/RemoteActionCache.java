@@ -14,33 +14,33 @@ import java.util.Collection;
 @ThreadCompatible
 public interface RemoteActionCache {
   /**
-   * Updates the cache entry for the specified key.
+   * Put the file in cache if it is not already in it. No-op if the file is already stored in cache.
+   * Returns the key for fetching the file from cache regardless if it exists in the cache or not.
    */
-  public void putFile(String key, Path file) throws IOException;
+  public String putFileIfNotExist(Path file) throws IOException;
 
   /**
-   * Save the file indexed by specified key to the path.
+   * Write the file in cache identified by key to the file system. The key must uniquely identify
+   * the content of the file. Throws CacheNotFoundException if the file is not found in cache.
    */
-  public void writeFile(String key, Path dest) throws IOException, CacheNotFoundException;
+  public void writeFile(String key, Path dest, boolean executable) throws IOException, CacheNotFoundException;
 
   /**
-   * Returns true if the cache contains the file indexed by specified key.
-   */
-  public boolean containsFile(String key);
-
-  /**
-   * Save the action output files identified by the key. The key must uniquely
+   * Write the action output files identified by the key to the file system. The key must uniquely
    * identify the action and the content of action inputs.
-   * Returns true if the files are written to the execution root in the file system.
-   * Returns false if the action output does not exist in the cache.
+   * Throws CacheNotFoundException if action output is not found in cache.
    */
-  public boolean writeActionOutput(String key, Path execRoot)
+  public void writeActionOutput(String key, Path execRoot)
           throws IOException, CacheNotFoundException;
 
   /**
    * Update the cache with the action outputs for the specified key.
-   * |inputFileCache| is used to obtain the digest of the action output files.
    */
-    public void putActionOutput(String key,
-                                Collection<? extends ActionInput> outputs) throws IOException;
+  public void putActionOutput(String key,
+                              Collection<? extends ActionInput> outputs) throws IOException;
+
+  /**
+   * Update the cache with the files for the specified key.
+   */
+  public void putActionOutput(String key, Path execRoot, Collection<Path> files) throws IOException;
 }

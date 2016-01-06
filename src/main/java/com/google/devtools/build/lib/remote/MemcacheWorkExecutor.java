@@ -70,11 +70,11 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
           continue;
       }
  
-      System.out.println("Put file " + file.toString());
       String contentKey = cache.putFileIfNotExist(file);
       work.addInputFilesBuilder()
           .setPath(input.getExecPathString())
-          .setContentKey(contentKey);
+          .setContentKey(contentKey)
+          .setExecutable(file.isExecutable());
     }
 
     work.addAllArguments(arguments);
@@ -98,10 +98,9 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
            try {
               // Prepare directories and input files.
               for (FileEntry input : work.getInputFilesList()) {
-                  System.out.println("Writing input to file system: " + input.getPath());
                   Path file = execRoot.getRelative(input.getPath());
                   FileSystemUtils.createDirectoryAndParents(file.getParentDirectory());
-                  cache.writeFile(input.getContentKey(), file);
+                  cache.writeFile(input.getContentKey(), file, input.getExecutable());
               }
 
               // Prepare directories for output files.
@@ -120,17 +119,12 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
                                                  stdout,
                                                  stderr,
                                                  true);
-              System.out.println("Command result: " + result.toString());
               cache.putActionOutput(work.getOutputKey(), execRoot, outputs);
               return new Response(result.getTerminationStatus().success(),
                                   stdout.toString(),
                                   stderr.toString(),
                                   "");
              } catch (CommandException e) {
-               System.out.println("Command failed.");
-               System.out.println(e.toString());
-               System.out.println(stdout.toString());
-               System.out.println(stderr.toString());
                return new Response(false, stdout.toString(), stderr.toString(), e.toString());
              }
          }

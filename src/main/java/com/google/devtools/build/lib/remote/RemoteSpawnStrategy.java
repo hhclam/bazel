@@ -18,6 +18,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.devtools.build.lib.actions.ActionExecutionContext;
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputFileCache;
@@ -35,6 +36,9 @@ import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
+import com.google.devtools.build.lib.remote.RemoteProtocol.CacheEntry;
+import com.google.devtools.build.lib.remote.RemoteProtocol.FileEntry;
+import com.google.devtools.build.lib.remote.RemoteProtocol.RemoteWorkRequest;
 import com.google.devtools.build.lib.rules.apple.AppleConfiguration;
 import com.google.devtools.build.lib.rules.apple.AppleHostInfo;
 import com.google.devtools.build.lib.rules.fileset.FilesetActionContext;
@@ -54,6 +58,7 @@ import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.SearchPath;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.io.File;
 import java.io.IOException;
@@ -63,12 +68,15 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Scanner;
-import java.util.UUID;
 
 /**
  * Strategy that uses subprocessing to execute a process.
@@ -76,27 +84,24 @@ import java.util.UUID;
 @ExecutionStrategy(name = { "remote" }, contextType = SpawnActionContext.class)
 public class RemoteSpawnStrategy implements SpawnActionContext {
   private final boolean verboseFailures;
-  private final Path processWrapper;
   private final Path execRoot;
-  private final BlazeDirectories blazeDirs;
   private final StandaloneSpawnStrategy standaloneStrategy;
-  private final RemoteActionCache remoteActionCache;
   private final RemoteOptions options;
+  private final RemoteActionCache remoteActionCache;
+  private final RemoteWorkExecutor remoteWorkExecutor;
 
   public RemoteSpawnStrategy(
         Map<String, String> clientEnv,
-        BlazeDirectories blazeDirs,
         Path execRoot,
         RemoteOptions options,
-        boolean verboseFailures) {
-      System.out.println("Creating remote spawn strategy.");
+        boolean verboseFailures,
+        RemoteActionCache actionCache,
+        RemoteWorkExecutor workExecutor) {
     this.verboseFailures = verboseFailures;
     this.execRoot = execRoot;
-    this.processWrapper = execRoot.getRelative(
-        "_bin/process-wrapper" + OsUtils.executableExtension());
-    this.blazeDirs = blazeDirs;
-    this.standaloneStrategy = new StandaloneSpawnStrategy(blazeDirs.getExecRoot(), verboseFailures);
-    this.remoteActionCache = new MemcacheActionCache(execRoot, options, new HazelcastCacheFactory().create(options));
+    this.standaloneStrategy = new StandaloneSpawnStrategy(execRoot, verboseFailures);
+    this.remoteActionCache = actionCache;
+    this.remoteWorkExecutor = workExecutor;
     this.options = options;
   }
 
@@ -131,6 +136,10 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     for (ActionInput input : inputs) {
         hasher.putString(input.getExecPathString(), Charset.defaultCharset());
         try {
+            // TODO(alpha): The digest from ActionInputFileCache is used to detect local file
+            // changes. It might not be sufficient to identify the input file globally in the
+            // remote action cache. Consider upgrading this to a better hash algorithm with
+            // less collision.
             hasher.putBytes(inputFileCache.getDigest(input).toByteArray());
         } catch (IOException e) {
             // TODO(alpha: Don't care now. I should find out how this happens.
@@ -138,36 +147,117 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     }
 
     // Save the action output if found in the remote action cache.
-    String actionInputHash = hasher.hash().toString();
-    try {
-        if (remoteActionCache.writeActionOutput(actionInputHash, execRoot)) {
-            Event.info(spawn.getMnemonic() + " reuse action outputs from cache");
-            return;
-        }
-    } catch (IOException e) {
-        throw new UserExecException("Failed to write action output.", e);
-    } catch (CacheNotFoundException e) {
-        eventHandler.handle(
-            Event.warn(
-                spawn.getMnemonic()
-                + " some cache entries cannot be found ("
-                + e
-                + ")"));
+    String actionOutputKey = hasher.hash().toString();
+
+    // Timeout for running the remote spawn.
+    int timeout = 120;
+    String timeoutStr = spawn.getExecutionInfo().get("timeout");
+    if (timeoutStr != null) {
+      try {
+        timeout = Integer.parseInt(timeoutStr);
+      } catch (NumberFormatException e) {
+        throw new UserExecException("could not parse timeout: ", e);
+      }
     }
 
-    // If the user requested to force update the remote action cache then execute the action
-    // locally.
-    standaloneStrategy.exec(spawn, actionExecutionContext);
     try {
-      remoteActionCache.putActionOutput(actionInputHash, spawn.getOutputFiles());
+        if (false && writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
+            return;
+
+        FileOutErr outErr = actionExecutionContext.getFileOutErr();
+        if (executeWorkRemotely(spawn.getMnemonic(),
+                                actionOutputKey,
+                                spawn.getArguments(),
+                                inputs,
+                                spawn.getEnvironment(),
+                                spawn.getOutputFiles(),
+                                timeout,
+                                eventHandler,
+                                outErr)) {
+            return;
+        }
+        
+        // If nothing works then run spawn locally.
+        standaloneStrategy.exec(spawn, actionExecutionContext);
+        if (remoteActionCache != null) {
+            remoteActionCache.putActionOutput(actionOutputKey, spawn.getOutputFiles());
+        }
     } catch (IOException e) {
-      eventHandler.handle(
-          Event.warn(
-              spawn.getMnemonic()
-              + " failed to save output to remote action cache ("
-              + e
-              + ")"));
+        throw new UserExecException("Unexpected IO error.", e);
     }
+  }
+
+  /**
+   * Submit work to execute remotly. Returns if all expected action outputs are found.
+   */
+  private boolean executeWorkRemotely(String mnemonic,
+                                      String actionOutputKey,
+                                      List<String> arguments,
+                                      List<ActionInput> inputs,
+                                      ImmutableMap<String, String> environment,
+                                      Collection<? extends ActionInput> outputs,
+                                      int timeout,
+                                      EventHandler eventHandler,
+                                      FileOutErr outErr)
+          throws IOException {
+    if (remoteWorkExecutor == null)
+      return false;
+    try {
+      ListenableFuture<RemoteWorkExecutor.Response> future = remoteWorkExecutor.submit(
+          execRoot,
+          actionOutputKey,
+          arguments,
+          inputs,
+          environment,
+          outputs,
+          timeout);
+      RemoteWorkExecutor.Response response = future.get(timeout, TimeUnit.SECONDS);
+      if (!response.success()) {
+          eventHandler.handle(Event.warn(mnemonic + " remote work failed. Running locally"));
+          return false;
+      }
+      if (response.getOut() != null)
+          outErr.printOut(response.getOut());
+      if (response.getErr() != null)
+          outErr.printErr(response.getErr());
+    } catch (ExecutionException e) {
+        eventHandler.handle(
+            Event.warn(mnemonic + " failed to execute work remotely (" + e + "). Running locally"));
+        return false;
+    } catch (TimeoutException e) {
+        eventHandler.handle(
+            Event.warn(mnemonic + " timed out executing work remotely (" + e +
+                       "). Running locally"));
+        return false;
+    } catch (InterruptedException e) {
+        eventHandler.handle(
+            Event.warn(mnemonic + " remote work interrupted (" + e + ")"));
+        return false;
+    }      
+    return writeActionOutput(mnemonic, actionOutputKey, eventHandler, false);
+  }
+
+  /**
+   * Saves the action output from cache. Returns true if all action outputs are found.
+   */
+  private boolean writeActionOutput(String mnemonic, String actionOutputKey,
+                                    EventHandler eventHandler, boolean ignoreCacheNotFound)
+          throws IOException {
+    if (remoteActionCache == null)
+      return false;
+    try {
+      remoteActionCache.writeActionOutput(actionOutputKey, execRoot);
+      Event.info(mnemonic + " reuse action outputs from cache");
+      // TODO(alpha): Check if all the expected outputs are there.
+      // If not run the standalone spawn.
+      return true;
+    } catch (CacheNotFoundException e) {
+      if (!ignoreCacheNotFound) {
+          eventHandler.handle(
+              Event.warn(mnemonic + " some cache entries cannot be found (" + e + ")"));
+      }
+    }
+    return false;
   }
 
   @Override

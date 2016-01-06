@@ -32,14 +32,16 @@ public class RemoteActionContextProvider extends ActionContextProvider {
   private final CommandEnvironment env;
   private final ImmutableList<ActionContext> strategies;
 
-  public RemoteActionContextProvider(CommandEnvironment env, BuildRequest buildRequest) {
+  public RemoteActionContextProvider(CommandEnvironment env, BuildRequest buildRequest,
+                                     RemoteActionCache actionCache, RemoteWorkExecutor workExecutor) {
     this.env = env;
     BlazeRuntime runtime = env.getRuntime();
     boolean verboseFailures = buildRequest.getOptions(ExecutionOptions.class).verboseFailures;
     Builder<ActionContext> strategiesBuilder = ImmutableList.builder();
     strategiesBuilder.add(
-        new RemoteSpawnStrategy(env.getClientEnv(), env.getDirectories(), runtime.getExecRoot(),
-                                buildRequest.getOptions(RemoteOptions.class), verboseFailures));
+        new RemoteSpawnStrategy(env.getClientEnv(), runtime.getExecRoot(),
+                                buildRequest.getOptions(RemoteOptions.class), verboseFailures,
+                                actionCache, workExecutor));
     this.strategies = strategiesBuilder.build();
   }
 

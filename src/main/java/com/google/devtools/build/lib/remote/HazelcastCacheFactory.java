@@ -27,7 +27,7 @@ public class HazelcastCacheFactory {
   public HazelcastCacheFactory() {
   }
 
-  Cache<String, byte[]> create(RemoteOptions options) {
+  public Cache<String, byte[]> create(RemoteOptions options) {
     final CachingProvider cachingProvider = Caching.getCachingProvider(options.memcacheProvider);
 
     Properties prop = new Properties();

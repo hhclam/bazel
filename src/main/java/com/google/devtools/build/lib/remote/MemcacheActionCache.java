@@ -13,6 +13,7 @@ import com.google.devtools.build.lib.remote.RemoteProtocol.FileEntry;
 import com.google.protobuf.ByteString;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 
 import javax.cache.Cache;
@@ -39,7 +40,15 @@ public class MemcacheActionCache implements RemoteActionCache {
   }
 
   @Override
-  public void putFile(String key, Path file) throws IOException {
+  public String putFileIfNotExist(Path file) throws IOException {
+      String contentKey = HashCode.fromBytes(file.getMD5Digest()).toString();
+      if (containsFile(contentKey))
+          return contentKey;
+      putFile(contentKey, file);
+      return contentKey;
+  }
+
+  private void putFile(String key, Path file) throws IOException {
       // TODO(alpha): I should put the file content as chunks to avoid reading the entire
       // file into memory.
       cache.put(key,
@@ -49,7 +58,7 @@ public class MemcacheActionCache implements RemoteActionCache {
   }
 
   @Override
-  public void writeFile(String key, Path dest) throws IOException, CacheNotFoundException {
+  public void writeFile(String key, Path dest, boolean executable) throws IOException, CacheNotFoundException {
       byte[] data = cache.get(key);
       if (data == null) {
           throw new CacheNotFoundException("File content cannot be found with key: " + key);
@@ -57,24 +66,24 @@ public class MemcacheActionCache implements RemoteActionCache {
       CacheEntry.parseFrom(data)
           .getFileContent()
           .writeTo(dest.getOutputStream());
+      dest.setExecutable(executable);
   }
 
-  @Override
-  public boolean containsFile(String key) {
+  private boolean containsFile(String key) {
       return cache.containsKey(key);
   }
 
   @Override
-  public boolean writeActionOutput(String key, Path execRoot)
-          throws IOException, CacheNotFoundException {
+  public void writeActionOutput(String key, Path execRoot) throws IOException,
+          CacheNotFoundException {
       byte[] data = cache.get(key);
       if (data == null)
-          return false;
+          throw new CacheNotFoundException("Action output cannot be found with key: " + key);
       CacheEntry cacheEntry = CacheEntry.parseFrom(data);
       for (FileEntry file : cacheEntry.getFilesList()) {
-          writeFile(file.getContentKey(), execRoot.getRelative(file.getPath()));
+          writeFile(file.getContentKey(), execRoot.getRelative(file.getPath()),
+                    file.getExecutable());
       }
-      return true;
   }
 
   @Override
@@ -82,18 +91,38 @@ public class MemcacheActionCache implements RemoteActionCache {
                               Collection<? extends ActionInput> outputs) throws IOException {
       CacheEntry.Builder actionOutput = CacheEntry.newBuilder();
       for (ActionInput output : outputs) {
-          // First put the file content to cache.
           Path file = execRoot.getRelative(output.getExecPathString());
-          if (file.isSymbolicLink() || file.isDirectory())
-              continue;
-          String contentKey = HashCode.fromBytes(file.getMD5Digest()).toString();
-          actionOutput.addFilesBuilder()
-                  .setPath(output.getExecPathString())
-                  .setContentKey(contentKey);
-          if (containsFile(contentKey))
-              continue;
-          putFile(contentKey, file);
+          addToActionOutput(file, output.getExecPathString(), actionOutput);
       }
       cache.put(key, actionOutput.build().toByteArray());
+  }
+
+  @Override
+  public void putActionOutput(String key,
+                              Path execRoot,
+                              Collection<Path> files) throws IOException {
+      CacheEntry.Builder actionOutput = CacheEntry.newBuilder();
+      for (Path file : files) {
+         addToActionOutput(file, file.relativeTo(execRoot).getPathString(), actionOutput);
+      }
+      cache.put(key, actionOutput.build().toByteArray());
+  }
+
+  /**
+   * Add the file to action output cache entry. Put the file to cache if necessary.
+   */
+  private void addToActionOutput(Path file, String execPathString, CacheEntry.Builder actionOutput)
+          throws IOException {
+      if (file.isSymbolicLink() || file.isDirectory()) {
+          // TODO(alpha): Need to handle these cases.
+          return;
+      }
+      // First put the file content to cache.
+      String contentKey = putFileIfNotExist(file);
+      // Add to protobuf.
+      actionOutput.addFilesBuilder()
+              .setPath(execPathString)
+              .setContentKey(contentKey)
+              .setExecutable(file.isExecutable());
   }
 }

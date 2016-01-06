@@ -216,6 +216,24 @@ java_import(
 )
 
 java_import(
+    name = "jetty",
+    jars = [
+        "jetty/jetty-annotations-9.3.6.v20151106.jar",
+        "jetty/jetty-continuation-9.3.6.v20151106.jar",
+        "jetty/jetty-deploy-9.3.6.v20151106.jar",
+        "jetty/jetty-http-9.3.6.v20151106.jar",
+        "jetty/jetty-io-9.3.6.v20151106.jar",
+        "jetty/jetty-security-9.3.6.v20151106.jar",
+        "jetty/jetty-server-9.3.6.v20151106.jar",
+        "jetty/jetty-servlet-9.3.6.v20151106.jar",
+        "jetty/jetty-servlets-9.3.6.v20151106.jar",
+        "jetty/jetty-util-9.3.6.v20151106.jar",
+        "jetty/jetty-webapp-9.3.6.v20151106.jar",
+        "jetty/servlet-api-3.1.jar",
+    ],
+)
+
+java_import(
     name = "error_prone",
     jars = [
         "error_prone/error_prone_core-2.0.8-20151216.jar",
@@ -364,7 +382,10 @@ java_import(
 
 java_import(
     name = "protobuf",
-    jars = ["protobuf/protobuf-java-3.0.0-beta-1.jar"],
+    jars = [
+        "protobuf/protobuf-java-3.0.0-beta-1.jar",
+        "protobuf/protobuf-java-util-3.0.0-beta-1.jar",
+    ],
 )
 
 # For bootstrapping JavaBuilder

@@ -40,6 +40,9 @@ message FileEntry {
   // different.
   string content_key = 2;
 
+  // Whether the file is an executable.
+  bool executable = 3;
+
   // TODO(alpha): For large files we need to break into down into chunks to store
   // in the cache. For that case we need a index for the chunks of the file.
 }

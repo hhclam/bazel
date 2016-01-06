@@ -23,7 +23,7 @@ public class RemoteOptions extends OptionsBase {
   @Option(
     name = "memcache_uri",
     defaultValue = "null",
-    category = "strategy",
+    category = "remote",
     help = "URI for the memcache."
   )
   public String memcacheUri;
@@ -31,7 +31,7 @@ public class RemoteOptions extends OptionsBase {
   @Option(
     name = "memcache_provider",
     defaultValue = "null",
-    category = "strategy",
+    category = "remote",
     help = "Class name of the cache provider."
   )
   public String memcacheProvider;
@@ -39,16 +39,25 @@ public class RemoteOptions extends OptionsBase {
   @Option(
     name = "hazelcast_configuration",
     defaultValue = "null",
-    category = "strategy",
-    help = "The location of configuration file when using hazelcast client for memcache."
+    category = "remote",
+    help = "The location of configuration file when using hazelcast for memcache. When using " +
+        " Hazelcast in server mode a value (anything) for --memcache_uri needs to be specified."
   )
   public String hazelcastConfiguration;
 
   @Option(
     name = "hazelcast_node",
     defaultValue = "null",
-    category = "strategy",
-    help = "A comma separated list of hostnames of hazelcast nodes."
+    category = "remote",
+    help = "A comma separated list of hostnames of hazelcast nodes. For client mode only."
   )
   public String hazelcastNode;
+
+  @Option(
+    name = "rest_worker_url",
+    defaultValue = "null",
+    category = "remote",
+    help = "URL for the REST worker."
+  )
+  public String restWorkerUrl;
 }

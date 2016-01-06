@@ -55,7 +55,8 @@ public class CommandFailureUtils {
       message.append(")");
     }
 
-    @Override
+
+      @Override
     public void describeCommandCwd(String cwd, StringBuilder message) {
       message.append("cd ").append(ShellEscaper.escapeString(cwd)).append(" && \\\n  ");
     }
