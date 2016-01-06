@@ -22,4 +22,13 @@ public class BuildWorkerOptions extends OptionsBase {
     help = "A directory for the build worker to do work."
   )
   public String workPath;
+ 
+  @Option(
+    name = "debug",
+    defaultValue = "false",
+    category = "build_worker",
+    help = "Turn this one for debugging remote job failure. There will be extra messages and the " +
+           "work directory will be preserved in the case of failure."
+  )
+  public boolean debug;
 }

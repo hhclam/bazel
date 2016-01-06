@@ -74,7 +74,7 @@ public class BuildRequestServlet extends HttpServlet {
                 .setErr("")
                 .setException(e.toString());
       } finally {
-          //        FileSystemUtils.deleteTree(tempRoot);
+        FileSystemUtils.deleteTree(tempRoot);
         response.setStatus(HttpServletResponse.SC_OK);
         response.getWriter().print(JsonFormat.printer().print(workResponse.build()));
       }

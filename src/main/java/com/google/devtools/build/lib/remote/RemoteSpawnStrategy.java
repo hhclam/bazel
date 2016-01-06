@@ -162,7 +162,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     }
 
     try {
-      if (false && writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
+      if (writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
         return;
 
       FileOutErr outErr = actionExecutionContext.getFileOutErr();
