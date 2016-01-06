@@ -1,7 +1,7 @@
 java_binary(
     name = "rest_build_worker",
     data = ["//src:libunix"],
-    # TODO(alpha): This is very fragile. Is there anything better I can do?
+    # TODO(philips): This is very fragile. Is there anything better I can do?
     jvm_flags = ["-Djava.library.path=$(BINDIR)/src/main/native"],
     main_class = "com.google.devtools.build.remote.RestBuildWorker",
     visibility = ["//visibility:public"],
