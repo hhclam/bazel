@@ -48,11 +48,12 @@ public class BuildRequestServlet extends HttpServlet {
       // TODO(alpha): Choose a better temp directory name.
       Path tempRoot = workPath.getRelative("build-" + System.currentTimeMillis());
       FileSystemUtils.createDirectoryAndParents(tempRoot);
+      boolean deleteTree = true;
       try {
         String workJson = CharStreams.toString(request.getReader());
         RemoteWorkRequest.Builder workRequest = RemoteWorkRequest.newBuilder();
         JsonFormat.parser().merge(workJson, workRequest);
-        RemoteWorkRequest work = workRequest.build();       
+        RemoteWorkRequest work = workRequest.build();
         final MemcacheActionCache actionCache = new MemcacheActionCache(
             tempRoot,
             remoteOptions,
@@ -61,9 +62,19 @@ public class BuildRequestServlet extends HttpServlet {
             actionCache,
             executorService,
             tempRoot);
+        if (options.debug) {
+          System.out.println("[INFO] Work received has "+ work.getInputFilesCount() +
+                             " inputs files and " + work.getOutputFilesCount() + " output files.");
+        }
         RemoteWorkExecutor.Response executorResponse = workExecutor.submit(work).get();
-        if (!executorResponse.success()) {
-            System.out.println("Work failed...");
+        if (options.debug) {
+          if (!executorResponse.success()) {
+            deleteTree = false;
+            System.out.println("[WARNING] Work failed.");
+            System.out.println(workJson);
+          } else {
+            System.out.println("[INFO] Work completed.");
+          }
         }
         workResponse.setSuccess(executorResponse.success())
                 .setOut(executorResponse.getOut())
@@ -74,7 +85,11 @@ public class BuildRequestServlet extends HttpServlet {
                 .setErr("")
                 .setException(e.toString());
       } finally {
-        FileSystemUtils.deleteTree(tempRoot);
+        if (deleteTree) {
+          FileSystemUtils.deleteTree(tempRoot);
+        } else {
+          System.out.println("[WARNING] Preserving work directory " + tempRoot.toString() + ".");
+        }
         response.setStatus(HttpServletResponse.SC_OK);
         response.getWriter().print(JsonFormat.printer().print(workResponse.build()));
       }

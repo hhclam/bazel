@@ -218,17 +218,12 @@ java_import(
 java_import(
     name = "jetty",
     jars = [
-        "jetty/jetty-annotations-9.3.6.v20151106.jar",
-        "jetty/jetty-continuation-9.3.6.v20151106.jar",
-        "jetty/jetty-deploy-9.3.6.v20151106.jar",
         "jetty/jetty-http-9.3.6.v20151106.jar",
         "jetty/jetty-io-9.3.6.v20151106.jar",
         "jetty/jetty-security-9.3.6.v20151106.jar",
         "jetty/jetty-server-9.3.6.v20151106.jar",
         "jetty/jetty-servlet-9.3.6.v20151106.jar",
-        "jetty/jetty-servlets-9.3.6.v20151106.jar",
         "jetty/jetty-util-9.3.6.v20151106.jar",
-        "jetty/jetty-webapp-9.3.6.v20151106.jar",
         "jetty/servlet-api-3.1.jar",
     ],
 )

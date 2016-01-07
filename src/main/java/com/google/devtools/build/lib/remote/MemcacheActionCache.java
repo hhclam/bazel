@@ -27,6 +27,8 @@ import com.google.devtools.build.lib.remote.RemoteProtocol.FileEntry;
 import com.google.protobuf.ByteString;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -65,10 +67,12 @@ public class MemcacheActionCache implements RemoteActionCache {
   private void putFile(String key, Path file) throws IOException {
     // TODO(alpha): I should put the file content as chunks to avoid reading the entire
     // file into memory.
+    InputStream stream = file.getInputStream();
     cache.put(key,
               CacheEntry.newBuilder()
-              .setFileContent(ByteString.readFrom(file.getInputStream()))
+              .setFileContent(ByteString.readFrom(stream))
               .build().toByteArray());
+    stream.close();
   }
 
   @Override
@@ -77,9 +81,11 @@ public class MemcacheActionCache implements RemoteActionCache {
     if (data == null) {
       throw new CacheNotFoundException("File content cannot be found with key: " + key);
     }
+    OutputStream stream = dest.getOutputStream();
     CacheEntry.parseFrom(data)
         .getFileContent()
-        .writeTo(dest.getOutputStream());
+        .writeTo(stream);
+    stream.close();
     dest.setExecutable(executable);
   }
 
