@@ -337,6 +337,30 @@ EOF
   expect_log "Tra-la!"
 }
 
+function test_http_404() {
+  http_response=$TEST_TMPDIR/http_response
+  cat > $http_response <<EOF
+HTTP/1.0 404 Not Found
+
+Help, I'm lost!
+EOF
+  nc_port=$(pick_random_unused_tcp_port) || exit 1
+  nc_l $nc_port < $http_response &
+  nc_pid=$!
+
+  cd ${WORKSPACE_DIR}
+  cat > WORKSPACE <<EOF
+http_file(
+    name = 'toto',
+    url = 'http://localhost:$nc_port/toto',
+    sha256 = 'whatever'
+)
+EOF
+  bazel build @toto//file &> $TEST_log && fail "Expected run to fail"
+  kill_nc
+  expect_log "404: Help, I'm lost!"
+}
+
 # Tests downloading a file and using it as a dependency.
 function test_http_download() {
   local test_file=$TEST_TMPDIR/toto
@@ -560,6 +584,35 @@ genrule(
     cmd = "cat \$< > \$@",
     outs = ["catter.out"],
     srcs = ["w"],
+)
+EOF
+
+  bazel build @x//:catter &> $TEST_log || fail "Build failed"
+  assert_contains "abc" bazel-genfiles/external/x/catter.out
+}
+
+function test_prefix_stripping_existing_repo() {
+  mkdir -p x/y/z
+  touch x/y/z/WORKSPACE
+  echo "abc" > x/y/z/w
+  cat > x/y/z/BUILD <<EOF
+genrule(
+    name = "catter",
+    cmd = "cat \$< > \$@",
+    outs = ["catter.out"],
+    srcs = ["w"],
+)
+EOF
+  zip -r x x
+  local sha256=$(sha256sum x.zip | cut -f 1 -d ' ')
+  serve_file x.zip
+
+  cat > WORKSPACE <<EOF
+http_archive(
+    name = "x",
+    url = "http://localhost:$nc_port/x.zip",
+    sha256 = "$sha256",
+    strip_prefix = "x/y/z",
 )
 EOF
 

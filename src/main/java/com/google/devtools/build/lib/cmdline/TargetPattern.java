@@ -19,9 +19,12 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.cmdline.LabelValidator.BadLabelException;
 import com.google.devtools.build.lib.cmdline.LabelValidator.PackageAndTarget;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier.RepositoryName;
+import com.google.devtools.build.lib.collect.CompactHashSet;
+import com.google.devtools.build.lib.util.BatchCallback;
 import com.google.devtools.build.lib.util.Preconditions;
 import com.google.devtools.build.lib.util.StringUtilities;
 import com.google.devtools.build.lib.vfs.PathFragment;
@@ -31,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import javax.annotation.concurrent.Immutable;
 
@@ -144,7 +148,16 @@ public abstract class TargetPattern implements Serializable {
    */
   public <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver)
       throws TargetParsingException, InterruptedException {
-    return eval(resolver, ImmutableSet.<String>of());
+    final Set<T> results = CompactHashSet.create();
+    BatchCallback<T, RuntimeException> callback =
+        new BatchCallback<T, RuntimeException>() {
+          @Override
+          public void process(Iterable<T> partialResult) {
+            Iterables.addAll(results, partialResult);
+          }
+        };
+    eval(resolver, ImmutableSet.<String>of(), callback);
+    return ResolvedTargets.<T>builder().addAll(results).build();
   }
 
   /**
@@ -154,9 +167,11 @@ public abstract class TargetPattern implements Serializable {
    * @throws IllegalArgumentException if {@code excludedSubdirectories} is nonempty and this
    *      pattern does not have type {@code Type.TARGETS_BELOW_DIRECTORY}.
    */
-  public abstract <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver,
-      ImmutableSet<String> excludedSubdirectories)
-      throws TargetParsingException, InterruptedException;
+  public abstract <T, E extends Exception> void eval(
+      TargetPatternResolver<T> resolver,
+      ImmutableSet<String> excludedSubdirectories,
+      BatchCallback<T, E> callback)
+      throws TargetParsingException, E, InterruptedException;
 
   /**
    * Returns {@code true} iff this pattern has type {@code Type.TARGETS_BELOW_DIRECTORY} and
@@ -204,13 +219,15 @@ public abstract class TargetPattern implements Serializable {
     }
 
     @Override
-    public <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories)
-        throws TargetParsingException, InterruptedException {
+    public <T, E extends Exception> void eval(
+        TargetPatternResolver<T> resolver,
+        ImmutableSet<String> excludedSubdirectories,
+        BatchCallback<T, E> callback)
+        throws TargetParsingException, E, InterruptedException {
       Preconditions.checkArgument(excludedSubdirectories.isEmpty(),
           "Target pattern \"%s\" of type %s cannot be evaluated with excluded subdirectories: %s.",
           getOriginalPattern(), getType(), excludedSubdirectories);
-      return resolver.getExplicitTarget(label(targetName));
+      callback.process(resolver.getExplicitTarget(label(targetName)).getTargets());
     }
 
     @Override
@@ -256,30 +273,37 @@ public abstract class TargetPattern implements Serializable {
     }
 
     @Override
-    public <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories)
-        throws TargetParsingException, InterruptedException {
+    public <T, E extends Exception> void eval(
+        TargetPatternResolver<T> resolver,
+        ImmutableSet<String> excludedSubdirectories,
+        BatchCallback<T, E> callback)
+        throws TargetParsingException, E, InterruptedException {
       Preconditions.checkArgument(excludedSubdirectories.isEmpty(),
           "Target pattern \"%s\" of type %s cannot be evaluated with excluded subdirectories: %s.",
           getOriginalPattern(), getType(), excludedSubdirectories);
       if (resolver.isPackage(PackageIdentifier.createInDefaultRepo(path))) {
         // User has specified a package name. lookout for default target.
-        return resolver.getExplicitTarget(label("//" + path));
-      }
+        callback.process(resolver.getExplicitTarget(label("//" + path)).getTargets());
+      } else {
 
-      List<String> pieces = SLASH_SPLITTER.splitToList(path);
+        List<String> pieces = SLASH_SPLITTER.splitToList(path);
 
-      // Interprets the label as a file target.  This loop stops as soon as the
-      // first BUILD file is found (i.e. longest prefix match).
-      for (int i = pieces.size() - 1; i > 0; i--) {
-        String packageName = SLASH_JOINER.join(pieces.subList(0, i));
-        if (resolver.isPackage(PackageIdentifier.createInDefaultRepo(packageName))) {
-          String targetName = SLASH_JOINER.join(pieces.subList(i, pieces.size()));
-          return resolver.getExplicitTarget(label("//" + packageName + ":" + targetName));
+        // Interprets the label as a file target.  This loop stops as soon as the
+        // first BUILD file is found (i.e. longest prefix match).
+        for (int i = pieces.size() - 1; i > 0; i--) {
+          String packageName = SLASH_JOINER.join(pieces.subList(0, i));
+          if (resolver.isPackage(PackageIdentifier.createInDefaultRepo(packageName))) {
+            String targetName = SLASH_JOINER.join(pieces.subList(i, pieces.size()));
+            callback.process(
+                resolver
+                    .getExplicitTarget(label("//" + packageName + ":" + targetName))
+                    .getTargets());
+            return;
+          }
         }
-      }
 
-      throw new TargetParsingException("couldn't determine target from filename '" + path + "'");
+        throw new TargetParsingException("couldn't determine target from filename '" + path + "'");
+      }
     }
 
     @Override
@@ -338,20 +362,26 @@ public abstract class TargetPattern implements Serializable {
     }
 
     @Override
-    public <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories)
-        throws TargetParsingException, InterruptedException {
+    public <T, E extends Exception> void eval(
+        TargetPatternResolver<T> resolver,
+        ImmutableSet<String> excludedSubdirectories,
+        BatchCallback<T, E> callback)
+        throws TargetParsingException, E, InterruptedException {
       Preconditions.checkArgument(excludedSubdirectories.isEmpty(),
           "Target pattern \"%s\" of type %s cannot be evaluated with excluded subdirectories: %s.",
           getOriginalPattern(), getType(), excludedSubdirectories);
       if (checkWildcardConflict) {
         ResolvedTargets<T> targets = getWildcardConflict(resolver);
         if (targets != null) {
-          return targets;
+          callback.process(targets.getTargets());
+          return;
         }
       }
 
-      return resolver.getTargetsInPackage(getOriginalPattern(), packageIdentifier, rulesOnly);
+      callback.process(
+          resolver
+              .getTargetsInPackage(getOriginalPattern(), packageIdentifier, rulesOnly)
+              .getTargets());
     }
 
     @Override
@@ -442,12 +472,18 @@ public abstract class TargetPattern implements Serializable {
     }
 
     @Override
-    public <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories)
-        throws TargetParsingException, InterruptedException {
-      return resolver.findTargetsBeneathDirectory(
-          directory.getRepository(), getOriginalPattern(),
-          directory.getPackageFragment().getPathString(), rulesOnly, excludedSubdirectories);
+    public <T, E extends Exception> void eval(
+        TargetPatternResolver<T> resolver,
+        ImmutableSet<String> excludedSubdirectories,
+        BatchCallback<T, E> callback)
+        throws TargetParsingException, E, InterruptedException {
+      resolver.findTargetsBeneathDirectory(
+          directory.getRepository(),
+          getOriginalPattern(),
+          directory.getPackageFragment().getPathString(),
+          rulesOnly,
+          excludedSubdirectories,
+          callback);
     }
 
     @Override

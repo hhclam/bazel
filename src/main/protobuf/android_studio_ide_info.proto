@@ -67,6 +67,7 @@ message RuleIdeInfo {
     JAVA_BINARY = 7;
     PROTO_LIBRARY = 8;
     ANDROID_SDK = 9;
+    JAVA_PLUGIN = 10;
   }
 
   string label = 1;
@@ -82,4 +83,5 @@ message RuleIdeInfo {
   AndroidRuleIdeInfo android_rule_ide_info = 8;
 
   repeated string tags = 9;
+  repeated string runtime_deps = 10;
 }
