@@ -15,8 +15,6 @@
 package com.google.devtools.build.lib.remote;
 
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
-import com.google.common.hash.HashCode;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -25,62 +23,32 @@ import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputFileCache;
 import com.google.devtools.build.lib.actions.ActionInputHelper;
 import com.google.devtools.build.lib.actions.ActionMetadata;
-import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ExecException;
 import com.google.devtools.build.lib.actions.ExecutionStrategy;
 import com.google.devtools.build.lib.actions.Executor;
 import com.google.devtools.build.lib.actions.Spawn;
 import com.google.devtools.build.lib.actions.SpawnActionContext;
 import com.google.devtools.build.lib.actions.UserExecException;
-import com.google.devtools.build.lib.analysis.AnalysisUtils;
-import com.google.devtools.build.lib.analysis.BlazeDirectories;
-import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
-import com.google.devtools.build.lib.remote.RemoteProtocol.CacheEntry;
-import com.google.devtools.build.lib.remote.RemoteProtocol.FileEntry;
-import com.google.devtools.build.lib.remote.RemoteProtocol.RemoteWorkRequest;
-import com.google.devtools.build.lib.rules.apple.AppleConfiguration;
-import com.google.devtools.build.lib.rules.apple.AppleHostInfo;
-import com.google.devtools.build.lib.rules.fileset.FilesetActionContext;
-import com.google.devtools.build.lib.shell.AbnormalTerminationException;
-import com.google.devtools.build.lib.shell.Command;
-import com.google.devtools.build.lib.shell.CommandException;
-import com.google.devtools.build.lib.shell.TerminationStatus;
 import com.google.devtools.build.lib.standalone.StandaloneSpawnStrategy;
-import com.google.devtools.build.lib.util.CommandFailureUtils;
 import com.google.devtools.build.lib.util.Preconditions;
-import com.google.devtools.build.lib.util.OS;
-import com.google.devtools.build.lib.util.OsUtils;
 import com.google.devtools.build.lib.util.io.FileOutErr;
-import com.google.devtools.build.lib.vfs.FileSystem;
-import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
-import com.google.devtools.build.lib.vfs.SearchPath;
-import com.google.protobuf.ByteString;
-import com.google.protobuf.InvalidProtocolBufferException;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.file.Files;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Scanner;
 
 /**
- * Strategy that uses subprocessing to execute a process.
+ * Strategy that uses a distributed cache for sharing action input and output files.
+ * Optionally this strategy also support offload the work to a remote worker.
  */
 @ExecutionStrategy(name = { "remote" }, contextType = SpawnActionContext.class)
 public class RemoteSpawnStrategy implements SpawnActionContext {
@@ -214,7 +182,12 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
           timeout);
       RemoteWorkExecutor.Response response = future.get(timeout, TimeUnit.SECONDS);
       if (!response.success()) {
-        eventHandler.handle(Event.warn(mnemonic + " remote work failed. Running locally"));
+        String exception = "";
+        if (!response.getException().isEmpty()) {
+          exception = " (" + response.getException() + ")";
+        }
+        eventHandler.handle(Event.warn(
+            mnemonic + " failed to execute work remotely"+ exception +", running locally"));
         return false;
       }
       if (response.getOut() != null)
@@ -223,12 +196,12 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
         outErr.printErr(response.getErr());
     } catch (ExecutionException e) {
       eventHandler.handle(
-          Event.warn(mnemonic + " failed to execute work remotely (" + e + "). Running locally"));
+          Event.warn(mnemonic + " failed to execute work remotely (" + e + "), running locally"));
       return false;
     } catch (TimeoutException e) {
       eventHandler.handle(
           Event.warn(mnemonic + " timed out executing work remotely (" + e +
-                     "). Running locally"));
+                     "), running locally"));
       return false;
     } catch (InterruptedException e) {
       eventHandler.handle(

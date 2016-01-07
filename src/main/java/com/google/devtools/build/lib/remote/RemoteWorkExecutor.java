@@ -56,6 +56,10 @@ public interface RemoteWorkExecutor {
       return err;
     }
 
+    public String getException() {
+      return exception;
+    }
+
     Response(boolean success, String out, String err, String exception) {
       this.success = success;
       this.out = out;
