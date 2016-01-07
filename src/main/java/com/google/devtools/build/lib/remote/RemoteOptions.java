@@ -25,7 +25,7 @@ public class RemoteOptions extends OptionsBase {
       name = "memcache_uri",
       defaultValue = "null",
       category = "remote",
-      help = "URI for the memcache."
+      help = "Implementation specific URI for the memcache provider."
   )
   public String memcacheUri;
  
@@ -42,7 +42,8 @@ public class RemoteOptions extends OptionsBase {
       defaultValue = "null",
       category = "remote",
       help = "The location of configuration file when using hazelcast for memcache. When using " +
-      " Hazelcast in server mode a value (anything) for --memcache_uri needs to be specified."
+      " Hazelcast in server mode a value (anything) for --memcache_uri needs to be specified." +
+      " Hazelcast clients must have the same value for --memcache_uri."
   )
   public String hazelcastConfiguration;
 
