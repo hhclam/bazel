@@ -16,6 +16,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 
 import java.io.IOException;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 import javax.cache.Cache;
@@ -46,7 +47,7 @@ public class BuildRequestServlet extends HttpServlet {
       response.setContentType("application/json");
       RemoteWorkResponse.Builder workResponse = RemoteWorkResponse.newBuilder();
       // TODO(alpha): Choose a better temp directory name.
-      Path tempRoot = workPath.getRelative("build-" + System.currentTimeMillis());
+      Path tempRoot = workPath.getRelative("build-" + UUID.randomUUID().toString());
       FileSystemUtils.createDirectoryAndParents(tempRoot);
       boolean deleteTree = true;
       try {
