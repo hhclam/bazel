@@ -15,6 +15,7 @@
 package com.google.devtools.build.lib.remote;
 
 import com.google.devtools.build.lib.actions.ActionInput;
+import com.google.devtools.build.lib.actions.ActionInputFileCache;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadCompatible;
 import com.google.devtools.build.lib.vfs.Path;
 
@@ -32,6 +33,8 @@ public interface RemoteActionCache {
    * Returns the key for fetching the file from cache regardless if it exists in the cache or not.
    */
   public String putFileIfNotExist(Path file) throws IOException;
+
+  public String putFileIfNotExist(ActionInputFileCache cache, ActionInput file) throws IOException;
 
   /**
    * Write the file in cache identified by key to the file system. The key must uniquely identify

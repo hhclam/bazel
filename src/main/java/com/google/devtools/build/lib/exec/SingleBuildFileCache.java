@@ -69,6 +69,10 @@ public class SingleBuildFileCache implements ActionInputFileCache {
         public ActionInputMetadata load(ActionInput input) {
           Path path = null;
           try {
+            StackTraceElement sts[] = Thread.currentThread().getStackTrace();
+            for (StackTraceElement st : sts) {
+              System.out.println(st.toString());
+            }
             path = fs.getPath(fullPath(input));
             BaseEncoding hex = BaseEncoding.base16().lowerCase();
             ByteString digest = ByteString.copyFrom(

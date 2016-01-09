@@ -17,6 +17,7 @@ package com.google.devtools.build.lib.remote;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.devtools.build.lib.actions.ActionInput;
+import com.google.devtools.build.lib.actions.ActionInputFileCache;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadCompatible;
 import com.google.devtools.build.lib.vfs.Path;
 
@@ -77,6 +78,7 @@ public interface RemoteWorkExecutor {
    */
   public ListenableFuture<Response> submit(
       Path execRoot,
+      ActionInputFileCache cache,
       String actionOutputKey,
       Collection<String> arguments,
       Collection<ActionInput> inputs,

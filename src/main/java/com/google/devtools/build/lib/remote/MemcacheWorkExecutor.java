@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.devtools.build.lib.actions.ActionInput;
+import com.google.devtools.build.lib.actions.ActionInputFileCache;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
 import com.google.devtools.build.lib.remote.RemoteProtocol.FileEntry;
 import com.google.devtools.build.lib.remote.RemoteProtocol.RemoteWorkRequest;
@@ -66,6 +67,7 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
   @Override
   public ListenableFuture<Response> submit(
       Path execRoot,
+      ActionInputFileCache actionCache,
       String actionOutputKey,
       Collection<String> arguments,
       Collection<ActionInput> inputs,
@@ -84,7 +86,7 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
         continue;
       }
  
-      String contentKey = cache.putFileIfNotExist(file);
+      String contentKey = cache.putFileIfNotExist(actionCache, input);
       work.addInputFilesBuilder()
           .setPath(input.getExecPathString())
           .setContentKey(contentKey)

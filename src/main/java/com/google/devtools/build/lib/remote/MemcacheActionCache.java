@@ -16,8 +16,10 @@ package com.google.devtools.build.lib.remote;
 
 import com.google.common.hash.HashCode;
 import com.google.common.io.Files;
+import com.google.common.io.BaseEncoding;
 
 import com.google.devtools.build.lib.actions.ActionInput;
+import com.google.devtools.build.lib.actions.ActionInputFileCache;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
@@ -61,6 +63,16 @@ public class MemcacheActionCache implements RemoteActionCache {
     if (containsFile(contentKey))
       return contentKey;
     putFile(contentKey, file);
+    return contentKey;
+  }
+
+  @Override
+  public String putFileIfNotExist(ActionInputFileCache cache, ActionInput file) throws IOException {
+    // PerActionFileCache already converted this to a lowercase ascii string.. it's not consistent!
+    String contentKey = new String(cache.getDigest(file).toByteArray());
+    if (containsFile(contentKey))
+      return contentKey;
+    putFile(contentKey, execRoot.getRelative(file.getExecPathString()));
     return contentKey;
   }
 

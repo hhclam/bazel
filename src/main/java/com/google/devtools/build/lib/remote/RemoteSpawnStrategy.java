@@ -134,7 +134,8 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
         return;
 
       FileOutErr outErr = actionExecutionContext.getFileOutErr();
-      if (executeWorkRemotely(spawn.getMnemonic(),
+      if (executeWorkRemotely(inputFileCache,
+                              spawn.getMnemonic(),
                               actionOutputKey,
                               spawn.getArguments(),
                               inputs,
@@ -159,7 +160,8 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
   /**
    * Submit work to execute remotly. Returns if all expected action outputs are found.
    */
-  private boolean executeWorkRemotely(String mnemonic,
+  private boolean executeWorkRemotely(ActionInputFileCache actionCache,
+                                      String mnemonic,
                                       String actionOutputKey,
                                       List<String> arguments,
                                       List<ActionInput> inputs,
@@ -174,6 +176,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     try {
       ListenableFuture<RemoteWorkExecutor.Response> future = remoteWorkExecutor.submit(
           execRoot,
+          actionCache,
           actionOutputKey,
           arguments,
           inputs,
