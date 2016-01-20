@@ -21,6 +21,7 @@ import com.google.common.io.BaseEncoding;
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputFileCache;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
+import com.google.devtools.build.lib.util.Preconditions;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
@@ -33,6 +34,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.concurrent.Semaphore;
 
 import javax.cache.Cache;
 
@@ -47,6 +49,8 @@ public class MemcacheActionCache implements RemoteActionCache {
   private final Path execRoot;
   private final RemoteOptions options;
   private final Cache<String, byte[]> cache;
+  private static final int MAX_MEMORY_KBYTES = 512 * 1024;
+  private final Semaphore uploadMemoryAvailable = new Semaphore(MAX_MEMORY_KBYTES, true);
 
   /**
    * Construct an action cache using JCache API.
@@ -77,14 +81,22 @@ public class MemcacheActionCache implements RemoteActionCache {
   }
 
   private void putFile(String key, Path file) throws IOException {
-    // TODO(alpha): I should put the file content as chunks to avoid reading the entire
-    // file into memory.
-    InputStream stream = file.getInputStream();
-    cache.put(key,
-              CacheEntry.newBuilder()
-              .setFileContent(ByteString.readFrom(stream))
-              .build().toByteArray());
-    stream.close();
+    try {
+      int fileSizeKBytes = (int)(file.getFileSize() / 1024);
+      Preconditions.checkArgument(fileSizeKBytes < MAX_MEMORY_KBYTES);
+      uploadMemoryAvailable.acquire(fileSizeKBytes);
+      // TODO(alpha): I should put the file content as chunks to avoid reading the entire
+      // file into memory.
+      InputStream stream = file.getInputStream();
+      cache.put(key,
+                CacheEntry.newBuilder()
+                .setFileContent(ByteString.readFrom(stream))
+                .build().toByteArray());
+      stream.close();
+      uploadMemoryAvailable.release(fileSizeKBytes);
+    } catch (InterruptedException e) {
+        throw new IOException("Failed to put file to memory cache.", e);
+    }
   }
 
   @Override

@@ -57,6 +57,8 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
    */
   private final Path execRoot;
 
+  private static final int MAX_WORK_SIZE_BYTES = 1024 * 1024 * 512;
+
   public MemcacheWorkExecutor(MemcacheActionCache cache, ListeningExecutorService executorService,
                               Path execRoot) {
     this.cache = cache;
@@ -77,12 +79,25 @@ public class MemcacheWorkExecutor implements RemoteWorkExecutor {
     RemoteWorkRequest.Builder work = RemoteWorkRequest.newBuilder();
     work.setOutputKey(actionOutputKey);
 
+    long workSize = 0;
+    for (ActionInput input : inputs) {
+      Path file = execRoot.getRelative(input.getExecPathString());
+      if (file.isDirectory()) {
+        continue;
+      }
+      workSize += file.getFileSize();
+    }
+
+    if (workSize > MAX_WORK_SIZE_BYTES) {
+      throw new WorkTooLargeException("Work is too large: " + workSize + " bytes.");
+    }
+
     // Save all input files to cache.
     for (ActionInput input : inputs) {
       Path file = execRoot.getRelative(input.getExecPathString());
            
       if (file.isDirectory()) {
-        // TODO(alpha): Need to handle these cases.
+        // TODO(alpha): Need to handle these cases. 
         continue;
       }
  

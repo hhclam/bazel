@@ -84,5 +84,5 @@ public interface RemoteWorkExecutor {
       Collection<ActionInput> inputs,
       ImmutableMap<String, String> environment,
       Collection<? extends ActionInput> outputs,
-      int timeout) throws IOException;
+      int timeout) throws IOException, WorkTooLargeException;
 }

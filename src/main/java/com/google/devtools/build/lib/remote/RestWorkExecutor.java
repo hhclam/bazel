@@ -16,6 +16,7 @@ package com.google.devtools.build.lib.remote;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
 import com.google.devtools.build.lib.remote.RemoteProtocol.RemoteWorkRequest;
 import com.google.devtools.build.lib.remote.RemoteProtocol.RemoteWorkResponse;
@@ -48,17 +49,23 @@ class RestWorkExecutor extends MemcacheWorkExecutor {
    */
   private final URL workerUrl;
 
+  /**
+   * Direct executor service for submitting the rest request on the calling thread.
+   */
+  private final ListeningExecutorService directExecutorService;
+
   public RestWorkExecutor(MemcacheActionCache cache,
                           ListeningExecutorService executorService,
                           URL restWorkerUrl) {
     // |execRoot| is only used for running the work locally which will not happen for class.
     super(cache, executorService, null);
+    this.directExecutorService = MoreExecutors.newDirectExecutorService();
     this.workerUrl = restWorkerUrl;
   }
 
   @Override
   public ListenableFuture<Response> submit(RemoteWorkRequest work) throws IOException {
-    return executorService.submit(new Callable<Response>(){
+    return directExecutorService.submit(new Callable<Response>(){
       public Response call() throws URISyntaxException,
           InvalidProtocolBufferException, IOException {
         // It is probably not ideal having one http client per Callable.

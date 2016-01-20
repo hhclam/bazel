@@ -130,7 +130,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     }
 
     try {
-      if (writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
+      if (false && writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
         return;
 
       FileOutErr outErr = actionExecutionContext.getFileOutErr();
@@ -210,7 +210,11 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
       eventHandler.handle(
           Event.warn(mnemonic + " remote work interrupted (" + e + ")"));
       return false;
-    }      
+    } catch (WorkTooLargeException e) {
+      eventHandler.handle(
+          Event.warn(mnemonic + " cannot be run remotely (" + e + ")"));
+      return false;
+    }
     return writeActionOutput(mnemonic, actionOutputKey, eventHandler, false);
   }
 
