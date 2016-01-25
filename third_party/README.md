@@ -278,3 +278,13 @@ a minimal set of extra dependencies.
 
 * Version: 0.28
 * License: Apache License 2.0
+
+## [hazelcast](http://hazelcast.org/)
+
+* Version: 3.5.4
+* License: Apache License 2.0
+
+## [truth](https://github.com/jsr107/jsr107spec)
+
+* Version: 1.0.0
+* License: Java Community Process license
