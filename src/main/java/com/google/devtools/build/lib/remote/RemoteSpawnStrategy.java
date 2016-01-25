@@ -93,8 +93,8 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     // Compute a hash code to uniquely identify the action plus the action inputs.
     Hasher hasher = Hashing.sha256().newHasher();
 
-    // TODO(alpha): The action key is usually computed using the path to the tool and the arguments.
-    // It does not take into account the content / versionof the system tool (e.g. gcc).
+    // TODO(alpha): The action key is usually computed using the path to the tool and the
+    // arguments. It does not take into account the content / versionof the system tool (e.g. gcc).
     // I should put the system configuration as part of the hash, e.g. OS, toolchain, etc.
     Preconditions.checkNotNull(actionMetadata.getKey());
     hasher.putString(actionMetadata.getKey(), Charset.defaultCharset());
