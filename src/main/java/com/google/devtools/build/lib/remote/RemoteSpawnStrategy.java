@@ -110,8 +110,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
         // remote action cache. Consider upgrading this to a better hash algorithm with
         // less collision.
         hasher.putBytes(inputFileCache.getDigest(input).toByteArray());
-      } catch (IOException e) {
-        // TODO(alpha: Don't care now. I should find out how this happens.
+        throw new UserExecException("Failed to get digest for input.", e);
       }
     }
 
@@ -130,7 +129,7 @@ public class RemoteSpawnStrategy implements SpawnActionContext {
     }
 
     try {
-      if (false && writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
+      if (writeActionOutput(spawn.getMnemonic(), actionOutputKey, eventHandler, true))
         return;
 
       FileOutErr outErr = actionExecutionContext.getFileOutErr();
