@@ -22,7 +22,7 @@ import com.google.devtools.build.lib.cmdline.TargetParsingException;
 import com.google.devtools.build.lib.events.ErrorSensingEventHandler;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
-import com.google.devtools.build.lib.packages.Attribute;
+import com.google.devtools.build.lib.packages.DependencyFilter;
 import com.google.devtools.build.lib.packages.Rule;
 import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.pkgcache.PackageProvider;
@@ -36,7 +36,6 @@ import com.google.devtools.build.lib.query2.engine.QueryEvalResult;
 import com.google.devtools.build.lib.query2.engine.QueryException;
 import com.google.devtools.build.lib.query2.engine.QueryExpression;
 import com.google.devtools.build.lib.query2.engine.QueryUtil.AggregateAllCallback;
-import com.google.devtools.build.lib.util.BinaryPredicate;
 import com.google.devtools.build.lib.util.Preconditions;
 import com.google.devtools.build.skyframe.WalkableGraph.WalkableGraphFactory;
 
@@ -58,11 +57,10 @@ import javax.annotation.Nullable;
 public abstract class AbstractBlazeQueryEnvironment<T> implements QueryEnvironment<T> {
   protected final ErrorSensingEventHandler eventHandler;
   private final Map<String, Set<T>> letBindings = new HashMap<>();
-  protected final Map<String, Set<Target>> resolvedTargetPatterns = new HashMap<>();
   protected final boolean keepGoing;
   protected final boolean strictScope;
 
-  protected final BinaryPredicate<Rule, Attribute> dependencyFilter;
+  protected final DependencyFilter dependencyFilter;
   private final Predicate<Label> labelFilter;
 
   private final Set<Setting> settings;
@@ -85,14 +83,17 @@ public abstract class AbstractBlazeQueryEnvironment<T> implements QueryEnvironme
     this.extraFunctions = ImmutableList.copyOf(extraFunctions);
   }
 
-  private static BinaryPredicate<Rule, Attribute> constructDependencyFilter(Set<Setting> settings) {
-    BinaryPredicate<Rule, Attribute> specifiedFilter =
-        settings.contains(Setting.NO_HOST_DEPS) ? Rule.NO_HOST_DEPS : Rule.ALL_DEPS;
+  private static DependencyFilter constructDependencyFilter(
+      Set<Setting> settings) {
+    DependencyFilter specifiedFilter =
+        settings.contains(Setting.NO_HOST_DEPS)
+            ? DependencyFilter.NO_HOST_DEPS
+            : DependencyFilter.ALL_DEPS;
     if (settings.contains(Setting.NO_IMPLICIT_DEPS)) {
-      specifiedFilter = Rule.and(specifiedFilter, Rule.NO_IMPLICIT_DEPS);
+      specifiedFilter = DependencyFilter.and(specifiedFilter, DependencyFilter.NO_IMPLICIT_DEPS);
     }
     if (settings.contains(Setting.NO_NODEP_DEPS)) {
-      specifiedFilter = Rule.and(specifiedFilter, Rule.NO_NODEP_ATTRIBUTES);
+      specifiedFilter = DependencyFilter.and(specifiedFilter, DependencyFilter.NO_NODEP_ATTRIBUTES);
     }
     return specifiedFilter;
   }
@@ -143,14 +144,13 @@ public abstract class AbstractBlazeQueryEnvironment<T> implements QueryEnvironme
 
     final AtomicBoolean empty = new AtomicBoolean(true);
     try (final AutoProfiler p = AutoProfiler.logged("evaluating query", LOG)) {
-      resolvedTargetPatterns.clear();
 
       // In the --nokeep_going case, errors are reported in the order in which the patterns are
       // specified; using a linked hash set here makes sure that the left-most error is reported.
       Set<String> targetPatternSet = new LinkedHashSet<>();
       expr.collectTargetPatterns(targetPatternSet);
       try {
-        resolvedTargetPatterns.putAll(preloadOrThrow(expr, targetPatternSet));
+        preloadOrThrow(expr, targetPatternSet);
       } catch (TargetParsingException e) {
         // Unfortunately, by evaluating the patterns in parallel, we lose some location information.
         throw new QueryException(expr, e.getMessage());
@@ -226,21 +226,23 @@ public abstract class AbstractBlazeQueryEnvironment<T> implements QueryEnvironme
 
   public Set<T> evalTargetPattern(QueryExpression caller, String pattern)
       throws QueryException {
-    if (!resolvedTargetPatterns.containsKey(pattern)) {
-      try {
-        resolvedTargetPatterns.putAll(preloadOrThrow(caller, ImmutableList.of(pattern)));
-      } catch (TargetParsingException e) {
-        // Will skip the target and keep going if -k is specified.
-        reportBuildFileError(caller, e.getMessage());
-      }
+    try {
+      preloadOrThrow(caller, ImmutableList.of(pattern));
+    } catch (TargetParsingException e) {
+      // Will skip the target and keep going if -k is specified.
+      reportBuildFileError(caller, e.getMessage());
     }
     AggregateAllCallback<T> aggregatingCallback = new AggregateAllCallback<>();
     getTargetsMatchingPattern(caller, pattern, aggregatingCallback);
     return aggregatingCallback.getResult();
   }
 
-  protected abstract Map<String, Set<Target>> preloadOrThrow(
-      QueryExpression caller, Collection<String> patterns)
+  /**
+   * Perform any work that should be done ahead of time to resolve the target patterns in the
+   * query. Implementations may choose to cache the results of resolving the patterns, cache
+   * intermediate work, or not cache and resolve patterns on the fly.
+   */
+  protected abstract void preloadOrThrow(QueryExpression caller, Collection<String> patterns)
       throws QueryException, TargetParsingException;
 
   @Override

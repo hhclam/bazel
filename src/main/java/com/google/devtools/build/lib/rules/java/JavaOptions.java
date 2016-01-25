@@ -346,6 +346,14 @@ public class JavaOptions extends FragmentOptions {
           + "The \"launcher\" attribute overrides this flag. ")
   public Label javaLauncher;
 
+  @Option(name = "proguard_top",
+      defaultValue = "null",
+      category = "version",
+      converter = LabelConverter.class,
+      help = "Specifies which version of ProGuard to use for code removal when building a Java "
+          + "binary.")
+  public Label proguard;
+
   @Option(name = "extra_proguard_specs",
       allowMultiple = true,
       defaultValue = "", // Ignored
@@ -388,6 +396,12 @@ public class JavaOptions extends FragmentOptions {
       category = "undocumented",
       help = "Applies desired link-time optimizations to Java binaries and tests.")
   public JavaOptimizationMode javaOptimizationMode;
+
+  @Option(name = "legacy_bazel_java_test",
+      defaultValue = "true",
+      category = "undocumented",
+      help = "Use the legacy mode of Bazel for java_test.")
+  public boolean legacyBazelJavaTest;
 
   @Override
   public FragmentOptions getHost(boolean fallback) {

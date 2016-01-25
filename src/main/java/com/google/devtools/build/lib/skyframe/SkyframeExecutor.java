@@ -136,7 +136,9 @@ import com.google.devtools.build.skyframe.SkyFunction;
 import com.google.devtools.build.skyframe.SkyFunctionName;
 import com.google.devtools.build.skyframe.SkyKey;
 import com.google.devtools.build.skyframe.SkyValue;
+import com.google.devtools.build.skyframe.WalkableGraph;
 import com.google.devtools.build.skyframe.WalkableGraph.WalkableGraphFactory;
+import com.google.devtools.common.options.OptionsClassProvider;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -341,7 +343,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     map.put(SkyFunctions.PREPARE_DEPS_OF_PATTERN, new PrepareDepsOfPatternFunction(pkgLocator));
     map.put(
         SkyFunctions.PREPARE_DEPS_OF_TARGETS_UNDER_DIRECTORY,
-        new PrepareDepsOfTargetsUnderDirectoryFunction());
+        new PrepareDepsOfTargetsUnderDirectoryFunction(directories));
     map.put(
         SkyFunctions.COLLECT_PACKAGES_UNDER_DIRECTORY,
         new CollectPackagesUnderDirectoryFunction(directories));
@@ -376,6 +378,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         configurationFactory));
     map.put(SkyFunctions.CONFIGURATION_FRAGMENT, new ConfigurationFragmentFunction(
         configurationFragments));
+    map.put(SkyFunctions.WORKSPACE_AST, new WorkspaceASTFunction(ruleClassProvider));
     map.put(
         SkyFunctions.WORKSPACE_FILE,
         new WorkspaceFileFunction(ruleClassProvider, pkgFactory, directories));
@@ -1455,12 +1458,17 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     return evaluationResult;
   }
 
+  @Override
+  public void afterUse(WalkableGraph walkableGraph) {
+  }
+
   /**
    * Get metadata related to the prepareAndGet() lookup. Resulting data is specific to the
    * underlying evaluation implementation.
    */
-  public String prepareAndGetMetadata(Collection<String> patterns, String offset) {
-    return buildDriver.meta(ImmutableList.of(getUniverseKey(patterns, offset)));
+   public String prepareAndGetMetadata(Collection<String> patterns, String offset,
+      OptionsClassProvider options) throws AbruptExitException, InterruptedException {
+    return buildDriver.meta(ImmutableList.of(getUniverseKey(patterns, offset)), options);
   }
 
   @Override

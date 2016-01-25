@@ -25,6 +25,7 @@ filegroup(
         ":libunix",
         "//src/main/tools:build-runfiles",
         "//src/main/tools:process-wrapper",
+        "//src/main/tools:xcode-locator",
         "//src/main/tools:namespace-sandbox",
         "//src/main/tools:build_interface_so",
     ] + embedded_tools,
@@ -67,6 +68,25 @@ genrule(
           """,
 )
 
+filegroup(
+    name = "darwin_tools",
+    srcs = [
+        "//src/tools/xcode/actoolwrapper:actoolwrapper",
+        "//src/tools/xcode/ibtoolwrapper:ibtoolwrapper",
+        "//src/tools/xcode/momcwrapper:momcwrapper",
+        "//src/tools/xcode/swiftstdlibtoolwrapper:swiftstdlibtoolwrapper",
+        "//src/tools/xcode/environment:environment_plist",
+        "//src/tools/xcode/xcrunwrapper:xcrunwrapper",
+        "//src/objc_tools/bundlemerge:bundlemerge_deploy.jar",
+        "//src/objc_tools/plmerge:plmerge_deploy.jar",
+        "//src/objc_tools/xcodegen:xcodegen_deploy.jar",
+        "//src/tools/xcode/realpath:realpath",
+    ] + select({
+        ":iphonesdk": ["//src/tools/xcode/stdredirect:StdRedirect.dylib"],
+        "//conditions:default": [],
+    }),
+)
+
 genrule(
     name = "embedded_tools",
     srcs = [
@@ -83,8 +103,14 @@ genrule(
         "//src/java_tools/buildjar:JavaBuilder_deploy.jar",
         "//src/java_tools/singlejar:SingleJar_deploy.jar",
         "//src/java_tools/buildjar/java/com/google/devtools/build/buildjar/genclass:GenClass_deploy.jar",
+        "//src/java_tools/junitrunner/java/com/google/testing/junit/runner:Runner_deploy.jar",
         "//third_party/ijar",
-    ],
+        "//third_party/java/apkbuilder:embedded_tools",
+    ] + select({
+        ":darwin": [":darwin_tools"],
+        ":darwin_x86_64": [":darwin_tools"],
+        "//conditions:default": [],
+    }),
     outs = ["embedded_tools.zip"],
     cmd = "$(location :create_embedded_tools.sh) $@ $(SRCS)",
 )
@@ -101,6 +127,7 @@ genrule(
         ":libunix",
         "//src/main/tools:build-runfiles",
         "//src/main/tools:process-wrapper",
+        "//src/main/tools:xcode-locator",
         "//src/main/tools:jdk-support",
         "//src/main/tools:namespace-sandbox",
         "//src/main/tools:build_interface_so",
@@ -143,6 +170,12 @@ config_setting(
 config_setting(
     name = "darwin_x86_64",
     values = {"cpu": "darwin_x86_64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "iphonesdk",
+    values = {"define": "IPHONE_SDK=1"},
     visibility = ["//visibility:public"],
 )
 

@@ -1,3 +1,7 @@
+---
+layout: documentation
+title: Test Encyclopedia
+---
 <h1>Bazel Test Encyclopedia</h1>
 <p class="lead">An Exhaustive Specification of the Test Execution Environment</p>
 
@@ -367,7 +371,7 @@ Tests should avoid using paths containing <code>..</code> components within the
 runfiles tree.</p>
 
 <p>No directory, file, or symlink within the runfiles tree (including paths
-which traverse symlinks) should be writable. (It follow that the initial
+which traverse symlinks) should be writable. (It follows that the initial
 working directory should not be writable.) Tests must not assume that any part
 of the runfiles is writable, or owned by the current user (i.e. chmod and chgrp
 may fail).</p>

@@ -54,6 +54,8 @@
 #include <utility>
 #include <vector>
 
+#include "src/main/cpp/blaze_abrupt_exit.h"
+#include "src/main/cpp/blaze_globals.h"
 #include "src/main/cpp/blaze_startup_options.h"
 #include "src/main/cpp/blaze_util.h"
 #include "src/main/cpp/blaze_util_platform.h"
@@ -82,70 +84,6 @@ namespace blaze {
 
 ////////////////////////////////////////////////////////////////////////
 // Global Variables
-
-// The reason for a blaze server restart.
-// Keep in sync with logging.proto
-enum RestartReason {
-  NO_RESTART = 0,
-  NO_DAEMON,
-  NEW_VERSION,
-  NEW_OPTIONS
-};
-
-struct GlobalVariables {
-  // Used to make concurrent invocations of this program safe.
-  string lockfile;  // = <output_base>/lock
-  int lockfd;
-
-  string jvm_log_file;  // = <output_base>/server/jvm.out
-
-  string cwd;
-
-  // The nearest enclosing workspace directory, starting from cwd.
-  // If not under a workspace directory, this is equal to cwd.
-  string workspace;
-
-  // Option processor responsible for parsing RC files and converting them into
-  // the argument list passed on to the server.
-  OptionProcessor option_processor;
-
-  pid_t server_pid;
-
-  volatile sig_atomic_t sigint_count;
-
-  // The number of the last received signal that should cause the client
-  // to shutdown.  This is saved so that the client's WTERMSIG can be set
-  // correctly.  (Currently only SIGPIPE uses this mechanism.)
-  volatile sig_atomic_t received_signal;
-
-  // Contains the relative paths of all the files in the attached zip, and is
-  // populated during GetInstallDir().
-  vector<string> extracted_binaries;
-
-  // Parsed startup options
-  BlazeStartupOptions options;
-
-  // The time in ms the launcher spends before sending the request to the Blaze
-  uint64_t startup_time;
-
-  // The time spent on extracting the new blaze version
-  // This is part of startup_time
-  uint64_t extract_data_time;
-
-  // The time in ms if a command had to wait on a busy Blaze server process
-  // This is part of startup_time
-  uint64_t command_wait_time;
-
-  RestartReason restart_reason;
-
-  // Absolute path of the blaze binary
-  string binary_path;
-
-  // MD5 hash of the Blaze binary (includes deploy.jar, extracted binaries, and
-  // anything else that ends up under the install_base).
-  string install_md5;
-};
-
 static GlobalVariables *globals;
 
 static void InitGlobals() {
@@ -409,7 +347,6 @@ static void AddLoggingArgs(vector<string>* args) {
   args->push_back(
       string("--binary_path=") + globals->binary_path);
 }
-
 
 // Join the elements of the specified array with NUL's (\0's), akin to the
 // format of /proc/$PID/cmdline.
@@ -760,17 +697,15 @@ static void KillRunningServer(pid_t server_pid) {
   pdie(blaze_exit_code::INTERNAL_ERROR, "SIGKILL unsuccessful after 10s");
 }
 
-
 // Kills the running Blaze server, if any.  Finds the pid from the socket.
 static bool KillRunningServerIfAny() {
-  int socket = ConnectToServer(false);
+  int socket = ConnectToServer(/*start=*/false);
   if (socket != -1) {
     KillRunningServer(globals->server_pid);
     return true;
   }
   return false;
 }
-
 
 // Calls fsync() on the file (or directory) specified in 'file_path'.
 // pdie()'s if syncing fails.
@@ -1037,8 +972,7 @@ static bool ServerNeedsToBeKilled(const vector<string>& args1,
 
 // Kills the running Blaze server, if any, if the startup options do not match.
 static void KillRunningServerIfDifferentStartupOptions() {
-  int socket = ConnectToServer(false);
-
+  int socket = ConnectToServer(/*start=*/false);
   if (socket == -1) {
     return;
   }
@@ -1178,7 +1112,7 @@ static char read_server_char(FILE *fp) {
             "Contents of '%s':\n", globals->options.GetProductName().c_str(),
             globals->jvm_log_file.c_str());
     WriteFileToStreamOrDie(stderr, globals->jvm_log_file.c_str());
-    exit(blaze_exit_code::INTERNAL_ERROR);
+    exit(GetExitCodeForAbruptExit(*globals));
   }
   return static_cast<char>(c);
 }
@@ -1205,11 +1139,10 @@ static string BuildServerRequest() {
 
 // Performs all I/O for a single client request to the server, and
 // shuts down the client (by exit or signal).
-static void SendServerRequest(void) ATTRIBUTE_NORETURN;
-static void SendServerRequest(void) {
+static ATTRIBUTE_NORETURN void SendServerRequest() {
   int socket = -1;
   while (true) {
-    socket = ConnectToServer(true);
+    socket = ConnectToServer(/*start=*/true);
     // Check for deleted server cwd:
     string server_cwd = GetProcessCWD(globals->server_pid);
     // TODO(bazel-team): Is this check even necessary? If someone deletes or
@@ -1363,7 +1296,6 @@ static void SendServerRequest(void) {
 }
 
 // Parse the options, storing parsed values in globals.
-// Returns the index of the first non-option argument.
 static void ParseOptions(int argc, const char *argv[]) {
   string error;
   blaze_exit_code::ExitCode parse_exit_code =

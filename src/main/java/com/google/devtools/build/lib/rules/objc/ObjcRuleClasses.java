@@ -49,12 +49,14 @@ import com.google.devtools.build.lib.packages.RuleClass;
 import com.google.devtools.build.lib.packages.RuleClass.Builder;
 import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassType;
 import com.google.devtools.build.lib.rules.apple.AppleConfiguration;
+import com.google.devtools.build.lib.rules.apple.AppleToolchain;
+import com.google.devtools.build.lib.rules.apple.AppleToolchain.RequiresXcodeConfigRule;
 import com.google.devtools.build.lib.rules.apple.DottedVersion;
 import com.google.devtools.build.lib.rules.apple.Platform;
+import com.google.devtools.build.lib.rules.apple.XcodeConfigProvider;
 import com.google.devtools.build.lib.syntax.Type;
 import com.google.devtools.build.lib.util.FileType;
 import com.google.devtools.build.lib.util.FileTypeSet;
-import com.google.devtools.build.lib.vfs.PathFragment;
 
 /**
  * Shared rule classes and associated utility code for Objective-C rules.
@@ -67,8 +69,6 @@ public class ObjcRuleClasses {
   static final String DSYMUTIL = "dsymutil";
   static final String LIPO = "lipo";
   static final String STRIP = "strip";
-
-  private static final PathFragment JAVA = new PathFragment("/usr/bin/java");
 
   private static final DottedVersion MIN_LAUNCH_STORYBOARD_OS_VERSION =
       DottedVersion.fromString("8.0");
@@ -158,27 +158,30 @@ public class ObjcRuleClasses {
       new SdkFramework("Foundation"), new SdkFramework("UIKit"));
 
   /**
-   * Creates a new spawn action builder that requires a darwin architecture to run.
+   * Creates a new spawn action builder that will ultimately use part of the apple toolchain
+   * using the xcrun binary. Such a spawn action is special in that, in order to run, it requires
+   * both a darwin architecture and a collection of environment variables which contain
+   * information about the target and host architectures.
    */
-  static SpawnAction.Builder spawnOnDarwinActionBuilder(RuleContext ruleContext) {
+  static SpawnAction.Builder spawnXcrunActionBuilder(RuleContext ruleContext) {
     AppleConfiguration appleConfiguration = ruleContext.getFragment(AppleConfiguration.class);
-    return new SpawnAction.Builder()
-        .setEnvironment(appleConfiguration.getEnvironmentForIosAction())
-        .setExecutionInfo(ImmutableMap.of(ExecutionRequirements.REQUIRES_DARWIN, ""));
+    XcodeConfigProvider xcodeConfigProvider =
+        ruleContext.getPrerequisite(":xcode_config", Mode.HOST, XcodeConfigProvider.class);
+    
+    ImmutableMap.Builder<String, String> envBuilder = ImmutableMap.<String, String>builder()
+        .putAll(appleConfiguration.getEnvironmentForIosAction())
+        .putAll(AppleToolchain.appleHostSystemEnv(xcodeConfigProvider));
+
+    return spawnOnDarwinActionBuilder()
+        .setEnvironment(envBuilder.build());
   }
 
   /**
-   * Creates a new spawn action builder that requires a darwin architecture to run and is executed
-   * with the given jar.
+   * Creates a new spawn action builder that requires a darwin architecture to run.
    */
-  // TODO(bazel-team): Reference a rule target rather than a jar file when Darwin runfiles work
-  // better.
-  static SpawnAction.Builder spawnJavaOnDarwinActionBuilder(RuleContext ruleContext,
-      Artifact deployJarArtifact) {
-    return spawnOnDarwinActionBuilder(ruleContext)
-        .setExecutable(JAVA)
-        .addExecutableArguments("-jar", deployJarArtifact.getExecPathString())
-        .addInput(deployJarArtifact);
+  static SpawnAction.Builder spawnOnDarwinActionBuilder() {
+    return new SpawnAction.Builder()
+        .setExecutionInfo(ImmutableMap.of(ExecutionRequirements.REQUIRES_DARWIN, ""));
   }
 
   /**
@@ -188,8 +191,8 @@ public class ObjcRuleClasses {
    * directly, but right now we don't have a buildhelpers package on Macs so we must specify
    * the path to /bin/bash explicitly.
    */
-  static SpawnAction.Builder spawnBashOnDarwinActionBuilder(RuleContext ruleContext, String cmd) {
-    return spawnOnDarwinActionBuilder(ruleContext)
+  static SpawnAction.Builder spawnBashOnDarwinActionBuilder(String cmd) {
+    return spawnOnDarwinActionBuilder()
         .setShellCommand(ImmutableList.of("/bin/bash", "-c", cmd));
   }
 
@@ -239,7 +242,7 @@ public class ObjcRuleClasses {
           Extra flags to pass to the compiler.
           ${SYNOPSIS}
           Subject to <a href="#make_variables">"Make variable"</a> substitution and
-          <a href="#sh-tokenization">Bourne shell tokenization</a>.
+          <a href="common-definitions.html#sh-tokenization">Bourne shell tokenization</a>.
           These flags will only apply to this target, and not those upon which
           it depends, or those which depend on it.
           <p>
@@ -708,7 +711,7 @@ public class ObjcRuleClasses {
            are) but also to all <code>objc_</code> dependers of this target.
            ${SYNOPSIS}
            Subject to <a href="#make_variables">"Make variable"</a> substitution and
-           <a href="#sh-tokenization">Bourne shell tokenization</a>.
+           <a href="common-definitions.html#sh-tokenization">Bourne shell tokenization</a>.
            <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
           .add(attr("defines", STRING_LIST))
           /* <!-- #BLAZE_RULE($objc_compiling_rule).ATTRIBUTE(enable_modules) -->
@@ -811,47 +814,73 @@ public class ObjcRuleClasses {
     @Override
     public RuleClass build(Builder builder, RuleDefinitionEnvironment env) {
       return builder
-          /* <!-- #BLAZE_RULE($objc_bundling_rule).ATTRIBUTE(infoplist) -->
-          The infoplist file. This corresponds to <i>appname</i>-Info.plist in Xcode projects.
+          /* <!-- #BLAZE_RULE($objc_bundling_rule).ATTRIBUTE(infoplist)[DEPRECATED] -->
+           The infoplist file. This corresponds to <i>appname</i>-Info.plist in Xcode projects.
+           ${SYNOPSIS}
+           Blaze will perform variable substitution on the plist file for the following values:
+           <ul>
+             <li><code>${EXECUTABLE_NAME}</code>: The name of the executable generated and included
+                in the bundle by blaze, which can be used as the value for
+                <code>CFBundleExecutable</code> within the plist.
+             <li><code>${BUNDLE_NAME}</code>: This target's name and bundle suffix (.bundle or .app)
+                in the form<code><var>name</var></code>.<code>suffix</code>.
+             <li><code>${PRODUCT_NAME}</code>: This target's name.
+          </ul>
+          <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
+          .add(attr("infoplist", LABEL).allowedFileTypes(PLIST_TYPE))
+          /* <!-- #BLAZE_RULE($objc_bundling_rule).ATTRIBUTE(infoplists) -->
+           Infoplist files to be merged. The merged output corresponds to <i>appname</i>-Info.plist
+           in Xcode projects.  Duplicate keys between infoplist files will cause an error if
+           and only if the values conflict.  If both <code>infoplist</code> and
+           <code>infoplists</code> are specified, the files defined in both attributes will be used.
+           ${SYNOPSIS}
+           Blaze will perform variable substitution on the plist files for the following values:
+           <ul>
+             <li><code>${EXECUTABLE_NAME}</code>: The name of the executable generated and included
+                in the bundle by blaze, which can be used as the value for
+                <code>CFBundleExecutable</code> within the plist.
+             <li><code>${BUNDLE_NAME}</code>: This target's name and bundle suffix (.bundle or .app)
+                in the form<code><var>name</var></code>.<code>suffix</code>.
+             <li><code>${PRODUCT_NAME}</code>: This target's name.
+          </ul>
+          <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
+          .add(attr("infoplists", BuildType.LABEL_LIST).allowedFileTypes(PLIST_TYPE))
+          /* <!-- #BLAZE_RULE($objc_bundling_rule).ATTRIBUTE(families) -->
+          The device families to which this bundle or binary is targeted.
           ${SYNOPSIS}
-          Blaze will perform variable substitution on the plist file for the following values:
-          <ul>
-            <li><code>${EXECUTABLE_NAME}</code>: The name of the executable generated and included
-               in the bundle by blaze, which can be used as the value for
-               <code>CFBundleExecutable</code> within the plist.
-            <li><code>${BUNDLE_NAME}</code>: This target's name and bundle suffix (.bundle or .app)
-               in the form<code><var>name</var></code>.<code>suffix</code>.
-            <li><code>${PRODUCT_NAME}</code>: This target's name.
-         </ul>
-         <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
-        .add(attr("infoplist", LABEL)
-            .allowedFileTypes(PLIST_TYPE))
-        /* <!-- #BLAZE_RULE($objc_bundling_rule).ATTRIBUTE(families) -->
-        The device families to which this bundle or binary is targeted.
-        ${SYNOPSIS}
 
-        This is known as the <code>TARGETED_DEVICE_FAMILY</code> build setting
-        in Xcode project files. It is a list of one or more of the strings
-        <code>"iphone"</code> and <code>"ipad"</code>.
+          This is known as the <code>TARGETED_DEVICE_FAMILY</code> build setting
+          in Xcode project files. It is a list of one or more of the strings
+          <code>"iphone"</code> and <code>"ipad"</code>.
 
-        <p>By default this is set to <code>"iphone"</code>, if explicitly specified may not be
-        empty.</p>
-        <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
-        .add(attr("families", STRING_LIST)
-             .value(ImmutableList.of(TargetDeviceFamily.IPHONE.getNameInRule())))
-        .add(attr("$momcwrapper", LABEL).cfg(HOST).exec()
-            .value(env.getLabel(Constants.TOOLS_REPOSITORY + "//tools/objc:momcwrapper")))
-        .add(attr("$swiftstdlibtoolwrapper", LABEL).cfg(HOST).exec()
-            .value(env.getLabel(
-                Constants.TOOLS_REPOSITORY + "//tools/objc:swiftstdlibtoolwrapper")))
-        .build();
+          <p>By default this is set to <code>"iphone"</code>, if explicitly specified may not be
+          empty.</p>
+          <!-- #END_BLAZE_RULE.ATTRIBUTE -->*/
+          .add(
+              attr("families", STRING_LIST)
+                  .value(ImmutableList.of(TargetDeviceFamily.IPHONE.getNameInRule())))
+          .add(
+              attr("$momcwrapper", LABEL)
+                  .cfg(HOST)
+                  .exec()
+                  .value(env.getLabel(Constants.TOOLS_REPOSITORY + "//tools/objc:momcwrapper")))
+          .add(
+              attr("$swiftstdlibtoolwrapper", LABEL)
+                  .cfg(HOST)
+                  .exec()
+                  .value(
+                      env.getLabel(
+                          Constants.TOOLS_REPOSITORY + "//tools/objc:swiftstdlibtoolwrapper")))
+          .build();
     }
+
     @Override
     public Metadata getMetadata() {
       return RuleDefinition.Metadata.builder()
           .name("$objc_bundling_rule")
           .type(RuleClassType.ABSTRACT)
-          .ancestors(OptionsRule.class, ResourceToolsRule.class, XcrunRule.class)
+          .ancestors(OptionsRule.class, ResourceToolsRule.class, XcrunRule.class,
+              AppleToolchain.RequiresXcodeConfigRule.class)
           .build();
     }
   }
@@ -1013,7 +1042,7 @@ public class ObjcRuleClasses {
       return builder
           // Needed to run the binary in the simulator.
           .add(attr("$iossim", LABEL).cfg(HOST).exec()
-              .value(env.getLabel("//third_party/iossim:iossim")))
+              .value(env.getLabel(Constants.TOOLS_REPOSITORY + "//third_party/iossim:iossim")))
           .add(attr("$std_redirect_dylib", LABEL).cfg(HOST).exec()
               .value(env.getLabel(Constants.TOOLS_REPOSITORY + "//tools/objc:StdRedirect.dylib")))
           .build();
@@ -1043,8 +1072,8 @@ public class ObjcRuleClasses {
       return RuleDefinition.Metadata.builder()
           .name("$objc_xcrun_rule")
           .type(RuleClassType.ABSTRACT)
+          .ancestors(RequiresXcodeConfigRule.class)
           .build();
     }
   }
 }
-

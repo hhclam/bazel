@@ -29,6 +29,7 @@ import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.MutableClassToInstanceMap;
+import com.google.devtools.build.lib.Constants;
 import com.google.devtools.build.lib.actions.ArtifactFactory;
 import com.google.devtools.build.lib.actions.PackageRootResolver;
 import com.google.devtools.build.lib.actions.Root;
@@ -56,7 +57,6 @@ import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.rules.test.TestActionBuilder;
 import com.google.devtools.build.lib.skylarkinterface.SkylarkCallable;
 import com.google.devtools.build.lib.skylarkinterface.SkylarkModule;
-import com.google.devtools.build.lib.syntax.SkylarkModuleNameResolver;
 import com.google.devtools.build.lib.util.CPU;
 import com.google.devtools.build.lib.util.Fingerprint;
 import com.google.devtools.build.lib.util.OS;
@@ -837,19 +837,20 @@ public final class BuildConfiguration {
     public List<Label> targetEnvironments;
 
     @Option(name = "objc_gcov_binary",
-        converter = LabelConverter.class,
-        defaultValue = "//third_party/gcov:gcov_for_xcode",
+        converter = ToolsLabelConverter.class,
+        defaultValue = "//third_party/gcov:gcov_for_xcode_osx",
         category = "undocumented")
     public Label objcGcovBinary;
 
-    // This performs the same function as objc_gcov_binary but applies to experminental_ios_test
-    // rather than ios_test.
-    // TODO(bazel-team): Remove this once experimental_ios_test replaces to ios_test.
-    @Option(name = "experimental_objc_gcov_binary",
-            converter = LabelConverter.class,
-            defaultValue = "//third_party/gcov:gcov_for_xcode_osx",
-            category = "undocumented")
-    public Label experimentalObjcGcovBinary;
+    /** Converter for labels in the @bazel_tools repository. The @Options' defaultValues can't
+     * prepend TOOLS_REPOSITORY, unfortunately, because then the compiler thinks they're not
+     * constant. */
+    public static class ToolsLabelConverter extends LabelConverter {
+      @Override
+      public Label convert(String input) throws OptionsParsingException {
+        return convertLabel(Constants.TOOLS_REPOSITORY + input);
+      }
+    }
 
     @Option(name = "experimental_dynamic_configs",
         defaultValue = "false",
@@ -914,7 +915,6 @@ public final class BuildConfiguration {
       }
       if (collectCodeCoverage) {
         labelMap.put("objc_gcov", objcGcovBinary);
-        labelMap.put("experimental_objc_gcov", experimentalObjcGcovBinary);
       }
     }
   }
@@ -1038,7 +1038,7 @@ public final class BuildConfiguration {
    */
   private final ImmutableMap<String, String> globalMakeEnv;
 
-  private final ImmutableMap<String, String> defaultShellEnvironment;
+  private final ImmutableMap<String, String> localShellEnvironment;
   private final BuildOptions buildOptions;
   private final Options options;
 
@@ -1194,7 +1194,7 @@ public final class BuildConfiguration {
     this.actionsEnabled = !actionsDisabled;
     this.fragments = ImmutableSortedMap.copyOf(fragmentsMap, lexicalFragmentSorter);
 
-    this.skylarkVisibleFragments = buildIndexOfVisibleFragments();
+    this.skylarkVisibleFragments = buildIndexOfSkylarkVisibleFragments();
     
     this.buildOptions = buildOptions;
     this.options = buildOptions.get(Options.class);
@@ -1231,7 +1231,7 @@ public final class BuildConfiguration {
     this.coverageReportGeneratorLabels = coverageReportGeneratorLabelsBuilder.build();
     this.gcovLabels = gcovLabelsBuilder.build();
 
-    this.defaultShellEnvironment = setupShellEnvironment();
+    this.localShellEnvironment = setupShellEnvironment();
 
     this.transitiveOptionsMap = computeOptionsMap(buildOptions, fragments.values());
 
@@ -1306,12 +1306,11 @@ public final class BuildConfiguration {
 
 
 
-  private ImmutableMap<String, Class<? extends Fragment>> buildIndexOfVisibleFragments() {
+  private ImmutableMap<String, Class<? extends Fragment>> buildIndexOfSkylarkVisibleFragments() {
     ImmutableMap.Builder<String, Class<? extends Fragment>> builder = ImmutableMap.builder();
-    SkylarkModuleNameResolver resolver = new SkylarkModuleNameResolver();
 
     for (Class<? extends Fragment> fragmentClass : fragments.keySet()) {
-      String name = resolver.resolveName(fragmentClass);
+      String name = SkylarkModule.Resolver.resolveName(fragmentClass);
       if (name != null) {
         builder.put(name, fragmentClass);
       }
@@ -2030,14 +2029,16 @@ public final class BuildConfiguration {
     return checksum();
   }
 
-  /**
-   * Returns the default shell environment
-   */
-  @SkylarkCallable(name = "default_shell_env", structField = true,
-      doc = "A dictionary representing the default environment. It maps variables "
-      + "to their values (strings).")
-  public ImmutableMap<String, String> getDefaultShellEnvironment() {
-    return defaultShellEnvironment;
+  @SkylarkCallable(
+    name = "default_shell_env",
+    structField = true,
+    doc =
+        "A dictionary representing the local shell environment. It maps variables "
+            + "to their values (strings).  The local shell environment contains settings that are "
+            + "machine specific, therefore its use should be avoided in rules meant to be hermetic."
+  )
+  public ImmutableMap<String, String> getLocalShellEnvironment() {
+    return localShellEnvironment;
   }
 
   /**

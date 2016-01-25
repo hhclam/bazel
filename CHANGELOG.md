@@ -1,3 +1,73 @@
+## Release 0.1.4 (2016-01-15)
+
+```
+Baseline: e933d5e
+   + 3d796fe: Rollback of commit
+              ac6ed79e1a3fa6b0ca91657b28e2a35f7e49758c.
+   + 7a02e5d: Fix installer under OS X
+   + 848740c: Fix bazel version for debian package
+   + 7751d43: Add a method for getting the root of a rule workspace
+              to the Label method
+```
+
+Important changes:
+
+  - add loadfiles() query operator, to find skylark files loaded by
+    targets.
+  - Added ability to declare and use aspects in Skylark.
+  - Skylark load statements may now reference .bzl files via build
+    labels, in addition to paths. In particular, such labels can be
+    used to reference Skylark files in external repositories; e.g.,
+    load("@my_external_repo//some_pkg:some_file.bzl", ...).
+    Path-based loads are now deprecated and may be disabled in the
+    future. Caveats: Skylark files currently do not respect package
+    visibility; i.e., all Skylark files are effectively public. Also,
+    loads may not reference the special //external package.
+  - Relative paths can now be used for 'path' with
+    new_local_repository and local_repository.
+
+## Release 0.1.3 (2016-01-07)
+
+```
+Baseline: 23ad8f6
+   + de2183d: Only depend on the WORKSPACE file for external files
+              that are under the external/ directory, i.e. were
+              created by Bazel.
+   + f8f855c: Rollback of commit
+              12bad3af0eade9c4b79d76f9e1c950ad2e3214c2.
+   + f627562: Stop parsing the WORKSPACE file when a parse error is
+              detected
+   + 763f139: Add -fno-canonical-system-headers to CROSSTOOL files so
+              that gcc doesn't resolve symlinks in .d files, which
+              would confuse Blaze.
+   + b95995b: Use openjdk7 as dependency for debian package of jdk7
+              flavor
+```
+
+New features:
+
+  - Skylark macros are now enabled in WORKSPACE file.
+  - .bazelrc allows workspace-relative imports as "import
+    %workspace%/path/to/rcfile"
+  - Evaluate the query expression in a file by passing
+    --query_file=<file> to query
+
+Important changes:
+
+  - Remove obsolete --objc_per_proto_includes flag.
+  - iOS apps and extensions now have launch_storyboard
+  - Passing multiple JVM options via a single --host_jvm_args flag is
+    now deprecated. Pass each JVM option behind its own
+    --host_jvm_args flag.
+  - Resources defined locally on an android_library rule will respect
+    the neverlink attribute.
+  - Update Rust to 1.4
+  - Fix resource handling for exported android_library rules
+  - Files in external repositories are now treated as mutable, which
+    will make the correctness guarantees of using external
+    repositories stronger (existent), but may cause performance
+    penalties.
+
 ## Release 0.1.2 (2015-11-20)
 
 ```

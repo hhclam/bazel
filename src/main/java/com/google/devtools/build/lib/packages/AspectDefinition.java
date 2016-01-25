@@ -17,19 +17,23 @@ package com.google.devtools.build.lib.packages;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
+import com.google.devtools.build.lib.packages.ConfigurationFragmentPolicy.MissingFragmentPolicy;
 import com.google.devtools.build.lib.packages.NativeAspectClass.NativeAspectFactory;
-import com.google.devtools.build.lib.util.BinaryPredicate;
 import com.google.devtools.build.lib.util.Preconditions;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import javax.annotation.Nullable;
 
 /**
  * The definition of an aspect (see {@link Aspect} for moreinformation.)
@@ -56,17 +60,20 @@ public final class AspectDefinition {
   private final ImmutableSet<String> requiredProviderNames;
   private final ImmutableMap<String, Attribute> attributes;
   private final ImmutableMultimap<String, AspectClass> attributeAspects;
+  @Nullable private final ConfigurationFragmentPolicy configurationFragmentPolicy;
 
   private AspectDefinition(
       String name,
       ImmutableSet<Class<?>> requiredProviders,
       ImmutableMap<String, Attribute> attributes,
-      ImmutableMultimap<String, AspectClass> attributeAspects) {
+      ImmutableMultimap<String, AspectClass> attributeAspects,
+      @Nullable ConfigurationFragmentPolicy configurationFragmentPolicy) {
     this.name = name;
     this.requiredProviders = requiredProviders;
     this.requiredProviderNames = toStringSet(requiredProviders);
     this.attributes = attributes;
     this.attributeAspects = attributeAspects;
+    this.configurationFragmentPolicy = configurationFragmentPolicy;
   }
 
   public String getName() {
@@ -83,8 +90,8 @@ public final class AspectDefinition {
   }
 
   /**
-   * Returns the set of {@link com.google.devtools.build.lib.analysis.TransitiveInfoProvider} instances
-   * that must be present on a configured target so that this aspect can be applied to it.
+   * Returns the set of {@link com.google.devtools.build.lib.analysis.TransitiveInfoProvider}
+   * instances that must be present on a configured target so that this aspect can be applied to it.
    *
    * <p>We cannot refer to that class here due to our dependency structure, so this returns a set
    * of unconstrained class objects.
@@ -97,11 +104,12 @@ public final class AspectDefinition {
   }
 
   /**
-   * Returns the set of {@link com.google.devtools.build.lib.analysis.TransitiveInfoProvider}
-   * instances that must be present on a configured target so that this aspect can be applied to it.
+   * Returns the set of class names of
+   * {@link com.google.devtools.build.lib.analysis.TransitiveInfoProvider} instances that must be
+   * present on a configured target so that this aspect can be applied to it.
    *
-   * <p>We cannot refer to that class here due to our dependency structure, so this returns a set
-   * of unconstrained class objects.
+   * <p>This set is a mirror of the set returned by {@link #getRequiredProviders}, but contains the
+   * names of the classes rather than the class objects themselves.
    *
    * <p>If a configured target does not have a required provider, the aspect is silently not created
    * for it.
@@ -118,24 +126,37 @@ public final class AspectDefinition {
   }
 
   /**
-   * Returns the attribute -&gt; set of labels that are provided by aspects of attribute.
+   * Returns the set of configuration fragments required by this Aspect, or {@code null} if it has
+   * not set a configuration fragment policy, meaning it should inherit from the attached rule.
    */
-  public static ImmutableMultimap<Attribute, Label> visitAspectsIfRequired(
-      Target from, Attribute attribute, Target to) {
-    // Aspect can be declared only for Rules.
-    if (!(from instanceof Rule) || !(to instanceof Rule)) {
-      return ImmutableMultimap.of();
-    }
-    RuleClass ruleClass = ((Rule) to).getRuleClassObject();
-    ImmutableSet<Class<?>> providers = ruleClass.getAdvertisedProviders();
-    return visitAspectsIfRequired((Rule) from, attribute, toStringSet(providers));
+  @Nullable public ConfigurationFragmentPolicy getConfigurationFragmentPolicy() {
+    // TODO(mstaib): When all existing aspects properly set their configuration fragment policy,
+    // this method and the associated member should no longer be nullable.
+    // "inherit from the attached rule" should go away.
+    return configurationFragmentPolicy;
   }
 
   /**
    * Returns the attribute -&gt; set of labels that are provided by aspects of attribute.
    */
   public static ImmutableMultimap<Attribute, Label> visitAspectsIfRequired(
-      Rule from, Attribute attribute, Set<String> advertisedProviders) {
+      Target from, Attribute attribute, Target to,
+      DependencyFilter dependencyFilter) {
+    // Aspect can be declared only for Rules.
+    if (!(from instanceof Rule) || !(to instanceof Rule)) {
+      return ImmutableMultimap.of();
+    }
+    RuleClass ruleClass = ((Rule) to).getRuleClassObject();
+    ImmutableSet<Class<?>> providers = ruleClass.getAdvertisedProviders();
+    return visitAspectsIfRequired((Rule) from, attribute, toStringSet(providers), dependencyFilter);
+  }
+
+  /**
+   * Returns the attribute -&gt; set of labels that are provided by aspects of attribute.
+   */
+  public static ImmutableMultimap<Attribute, Label> visitAspectsIfRequired(
+      Rule from, Attribute attribute, Set<String> advertisedProviders,
+      DependencyFilter dependencyFilter) {
     if (advertisedProviders.isEmpty()) {
       return ImmutableMultimap.of();
     }
@@ -148,7 +169,7 @@ public final class AspectDefinition {
           candidateClass.getDefinition().getRequiredProviderNames())) {
         continue;
       }
-      addAllAttributesOfAspect(from, result, candidateClass.getDefinition(), Rule.ALL_DEPS);
+      addAllAttributesOfAspect(from, result, candidateClass, dependencyFilter);
     }
     return ImmutableMultimap.copyOf(result);
   }
@@ -164,12 +185,14 @@ public final class AspectDefinition {
   /**
    * Collects all attribute labels from the specified aspectDefinition.
    */
-  public static void addAllAttributesOfAspect(Rule from,
-      Multimap<Attribute, Label> labelBuilder, AspectDefinition aspectDefinition,
-      BinaryPredicate<Rule, Attribute> predicate) {
-    ImmutableMap<String, Attribute> attributes = aspectDefinition.getAttributes();
+  public static void addAllAttributesOfAspect(
+      Rule from,
+      Multimap<Attribute, Label> labelBuilder,
+      Aspect aspect,
+      DependencyFilter dependencyFilter) {
+    ImmutableMap<String, Attribute> attributes = aspect.getDefinition().getAttributes();
     for (Attribute aspectAttribute : attributes.values()) {
-      if (!predicate.apply(from, aspectAttribute)) {
+      if (!dependencyFilter.apply(aspect, aspectAttribute)) {
         continue;
       }
       if (aspectAttribute.getType() == BuildType.LABEL) {
@@ -192,6 +215,16 @@ public final class AspectDefinition {
     private final Map<String, Attribute> attributes = new LinkedHashMap<>();
     private final Set<Class<?>> requiredProviders = new LinkedHashSet<>();
     private final Multimap<String, AspectClass> attributeAspects = LinkedHashMultimap.create();
+    private final ConfigurationFragmentPolicy.Builder configurationFragmentPolicy =
+        new ConfigurationFragmentPolicy.Builder();
+    // TODO(mstaib): When all existing aspects properly set their configuration fragment policy,
+    // remove this flag and the code that interacts with it.
+    /**
+     * True if the aspect definition has intentionally specified a configuration fragment policy by
+     * calling any of the methods which set up the policy, and thus needs the built AspectDefinition
+     * to retain the policy.
+     */
+    private boolean hasConfigurationFragmentPolicy = false;
 
     public Builder(String name) {
       this.name = name;
@@ -229,9 +262,6 @@ public final class AspectDefinition {
      * Declares that this aspect depends on the given {@link AspectClass} provided
      * by direct dependencies through attribute {@code attribute} on the target associated with this
      * aspect.
-     *
-     * <p>Note that {@code ConfiguredAspectFactory} instances are expected in the second argument,
-     * but we cannot reference that interface here.
      */
     public final Builder attributeAspect(String attribute, AspectClass aspectClass) {
       Preconditions.checkNotNull(attribute);
@@ -261,10 +291,84 @@ public final class AspectDefinition {
      * configuration is available, starting with ':')
      */
     public Builder add(Attribute attribute) {
-      Preconditions.checkState(attribute.isImplicit() || attribute.isLateBound());
-      Preconditions.checkState(!attributes.containsKey(attribute.getName()),
+      Preconditions.checkArgument(attribute.isImplicit() || attribute.isLateBound());
+      Preconditions.checkArgument(!attributes.containsKey(attribute.getName()),
           "An attribute with the name '%s' already exists.", attribute.getName());
       attributes.put(attribute.getName(), attribute);
+      return this;
+    }
+
+    /**
+     * Declares that the implementation of the associated aspect definition requires the given
+     * fragments to be present in this rule's host and target configurations.
+     *
+     * <p>The value is inherited by subclasses.
+     */
+    public Builder requiresConfigurationFragments(Class<?>... configurationFragments) {
+      hasConfigurationFragmentPolicy = true;
+      configurationFragmentPolicy
+          .requiresConfigurationFragments(ImmutableSet.copyOf(configurationFragments));
+      return this;
+    }
+
+    /**
+     * Declares that the implementation of the associated aspect definition requires the given
+     * fragments to be present in the host configuration.
+     *
+     * <p>The value is inherited by subclasses.
+     */
+    public Builder requiresHostConfigurationFragments(Class<?>... configurationFragments) {
+      hasConfigurationFragmentPolicy = true;
+      configurationFragmentPolicy
+          .requiresHostConfigurationFragments(ImmutableSet.copyOf(configurationFragments));
+      return this;
+    }
+
+    /**
+     * Declares the configuration fragments that are required by this rule for the target
+     * configuration.
+     *
+     * <p>In contrast to {@link #requiresConfigurationFragments(Class...)}, this method takes the
+     * Skylark module names of fragments instead of their classes.
+     */
+    public Builder requiresConfigurationFragmentsBySkylarkModuleName(
+        Collection<String> configurationFragmentNames) {
+      // This method is unconditionally called from Skylark code, so only consider the user to have
+      // specified a configuration policy if the collection actually has anything in it.
+      // TODO(mstaib): Stop caring about this as soon as all aspects have configuration policies.
+      hasConfigurationFragmentPolicy =
+          hasConfigurationFragmentPolicy || !configurationFragmentNames.isEmpty();
+      configurationFragmentPolicy
+          .requiresConfigurationFragmentsBySkylarkModuleName(configurationFragmentNames);
+      return this;
+    }
+
+    /**
+     * Declares the configuration fragments that are required by this rule for the host
+     * configuration.
+     *
+     * <p>In contrast to {@link #requiresHostConfigurationFragments(Class...)}, this method takes
+     * the Skylark module names of fragments instead of their classes.
+     */
+    public Builder requiresHostConfigurationFragmentsBySkylarkModuleName(
+        Collection<String> configurationFragmentNames) {
+      // This method is unconditionally called from Skylark code, so only consider the user to have
+      // specified a configuration policy if the collection actually has anything in it.
+      // TODO(mstaib): Stop caring about this as soon as all aspects have configuration policies.
+      hasConfigurationFragmentPolicy =
+          hasConfigurationFragmentPolicy || !configurationFragmentNames.isEmpty();
+      configurationFragmentPolicy
+          .requiresHostConfigurationFragmentsBySkylarkModuleName(configurationFragmentNames);
+      return this;
+    }
+
+    /**
+     * Sets the policy for the case where the configuration is missing required fragments (see
+     * {@link #requiresConfigurationFragments}).
+     */
+    public Builder setMissingFragmentPolicy(MissingFragmentPolicy missingFragmentPolicy) {
+      hasConfigurationFragmentPolicy = true;
+      configurationFragmentPolicy.setMissingFragmentPolicy(missingFragmentPolicy);
       return this;
     }
 
@@ -275,7 +379,8 @@ public final class AspectDefinition {
      */
     public AspectDefinition build() {
       return new AspectDefinition(name, ImmutableSet.copyOf(requiredProviders),
-          ImmutableMap.copyOf(attributes), ImmutableMultimap.copyOf(attributeAspects));
+          ImmutableMap.copyOf(attributes), ImmutableSetMultimap.copyOf(attributeAspects),
+          hasConfigurationFragmentPolicy ? configurationFragmentPolicy.build() : null);
     }
   }
 }

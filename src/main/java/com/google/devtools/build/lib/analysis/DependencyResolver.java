@@ -485,7 +485,7 @@ public abstract class DependencyResolver {
                     "Late bound attribute '%s' is not a label or a label list",
                     attribute.getName()));
           }
-        } catch (ClassCastException e) {
+        } catch (ClassCastException e) { // From either of the cast calls above.
           throw new EvalException(
               rule.getLocation(),
               String.format(
@@ -495,22 +495,6 @@ public abstract class DependencyResolver {
                   EvalUtils.getDataTypeName(actualValue, true)));
         }
       }
-    }
-  }
-
-  /**
-   * A variant of {@link #dependentNodeMap} that only returns the values of the resulting map, and
-   * also converts any internally thrown {@link EvalException} instances into {@link
-   * IllegalStateException}.
-   */
-  public final Collection<Dependency> dependentNodes(
-      TargetAndConfiguration node, BuildConfiguration hostConfig,
-      Set<ConfigMatchingProvider> configConditions) throws InterruptedException {
-    try {
-      return ImmutableSet.copyOf(
-          dependentNodeMap(node, hostConfig, /*aspect=*/ null, configConditions).values());
-    } catch (EvalException e) {
-      throw new IllegalStateException(e);
     }
   }
 

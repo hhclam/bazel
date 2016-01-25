@@ -55,16 +55,19 @@ public final class BazelMockCcSupport extends MockCcSupport {
     }
   }
 
+  @Override
   protected String getRealFilesystemCrosstoolTopPath() {
     assert false;
     return null;
   }
 
+  @Override
   protected String[] getRealFilesystemTools(String crosstoolTop) {
     assert false;
     return null;
   }
 
+  @Override
   protected ImmutableList<String> getCrosstoolArchs() {
     return CROSSTOOL_ARCHS;
   }
@@ -82,39 +85,44 @@ public final class BazelMockCcSupport extends MockCcSupport {
         "cc_toolchain(name = 'cc-compiler-k8', all_files = ':empty', compiler_files = ':empty',",
         "    cpu = 'local', dwp_files = ':empty', dynamic_runtime_libs = [':empty'], ",
         "    linker_files = ':empty',",
-        "    module_map = 'crosstool.cppmap',",
+        "    module_map = 'crosstool.cppmap', supports_header_parsing = 1,",
         "    objcopy_files = ':empty', static_runtime_libs = [':empty'], strip_files = ':empty',",
         ")",
         "cc_toolchain(name = 'cc-compiler-piii', all_files = ':empty', compiler_files = ':empty',",
         "    cpu = 'local', dwp_files = ':empty', dynamic_runtime_libs = [':empty'], ",
         "    linker_files = ':empty',",
-        "    module_map = 'crosstool.cppmap',",
+        "    module_map = 'crosstool.cppmap', supports_header_parsing = 1,",
         "    objcopy_files = ':empty', static_runtime_libs = [':empty'], strip_files = ':empty',",
         ")",
         "cc_toolchain(name = 'cc-compiler-darwin', all_files = ':empty', ",
         "    compiler_files = ':empty',",
         "    cpu = 'local', dwp_files = ':empty', dynamic_runtime_libs = [':empty'], ",
         "    linker_files = ':empty',",
-        "    module_map = 'crosstool.cppmap',",
+        "    module_map = 'crosstool.cppmap', supports_header_parsing = 1,",
         "    objcopy_files = ':empty', static_runtime_libs = [':empty'], strip_files = ':empty',",
         ")",
         "cc_toolchain(name = 'cc-compiler-armeabi-v7a', all_files = ':empty', ",
         "    compiler_files = ':empty',",
         "    cpu = 'local', dwp_files = ':empty', dynamic_runtime_libs = [':empty'], ",
         "    linker_files = ':empty',",
-        "    module_map = 'crosstool.cppmap',",
+        "    module_map = 'crosstool.cppmap', supports_header_parsing = 1,",
         "    objcopy_files = ':empty', static_runtime_libs = [':empty'], strip_files = ':empty',",
         ")");
 
     config.create(
         "/bazel_tools_workspace/tools/cpp/CROSSTOOL",
         readFromResources("com/google/devtools/build/lib/MOCK_CROSSTOOL"));
+    config.create(
+        "/bazel_tools_workspace/tools/objc/BUILD",
+        "xcode_config(name = 'host_xcodes')");
   }
 
+  @Override
   protected String getMockCrosstoolVersion() {
     return "gcc-4.4.0-glibc-2.3.6";
   }
 
+  @Override
   protected String readCrosstoolFile() throws IOException {
     return readFromResources("com/google/devtools/build/lib/MOCK_CROSSTOOL");
   }
@@ -124,10 +132,12 @@ public final class BazelMockCcSupport extends MockCcSupport {
     return new String(ByteStreams.toByteArray(in), UTF_8);
   }
 
+  @Override
   public String getMockCrosstoolPath() {
     return "/bazel_tools_workspace/tools/cpp/";
   }
 
+  @Override
   public Predicate<String> labelNameFilter() {
     return CC_LABEL_NAME_FILTER;
   }

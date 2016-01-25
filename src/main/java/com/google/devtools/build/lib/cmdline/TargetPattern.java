@@ -19,11 +19,9 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.cmdline.LabelValidator.BadLabelException;
 import com.google.devtools.build.lib.cmdline.LabelValidator.PackageAndTarget;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier.RepositoryName;
-import com.google.devtools.build.lib.collect.CompactHashSet;
 import com.google.devtools.build.lib.util.BatchCallback;
 import com.google.devtools.build.lib.util.Preconditions;
 import com.google.devtools.build.lib.util.StringUtilities;
@@ -34,7 +32,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 import javax.annotation.concurrent.Immutable;
 
@@ -146,18 +143,10 @@ public abstract class TargetPattern implements Serializable {
   /**
    * Evaluates the current target pattern and returns the result.
    */
-  public <T> ResolvedTargets<T> eval(TargetPatternResolver<T> resolver)
-      throws TargetParsingException, InterruptedException {
-    final Set<T> results = CompactHashSet.create();
-    BatchCallback<T, RuntimeException> callback =
-        new BatchCallback<T, RuntimeException>() {
-          @Override
-          public void process(Iterable<T> partialResult) {
-            Iterables.addAll(results, partialResult);
-          }
-        };
-    eval(resolver, ImmutableSet.<String>of(), callback);
-    return ResolvedTargets.<T>builder().addAll(results).build();
+  public <T, E extends Exception> void eval(
+      TargetPatternResolver<T> resolver, BatchCallback<T, E> callback)
+      throws TargetParsingException, E, InterruptedException {
+    eval(resolver, ImmutableSet.<PathFragment>of(), callback);
   }
 
   /**
@@ -169,7 +158,7 @@ public abstract class TargetPattern implements Serializable {
    */
   public abstract <T, E extends Exception> void eval(
       TargetPatternResolver<T> resolver,
-      ImmutableSet<String> excludedSubdirectories,
+      ImmutableSet<PathFragment> excludedSubdirectories,
       BatchCallback<T, E> callback)
       throws TargetParsingException, E, InterruptedException;
 
@@ -221,7 +210,7 @@ public abstract class TargetPattern implements Serializable {
     @Override
     public <T, E extends Exception> void eval(
         TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories,
+        ImmutableSet<PathFragment> excludedSubdirectories,
         BatchCallback<T, E> callback)
         throws TargetParsingException, E, InterruptedException {
       Preconditions.checkArgument(excludedSubdirectories.isEmpty(),
@@ -275,7 +264,7 @@ public abstract class TargetPattern implements Serializable {
     @Override
     public <T, E extends Exception> void eval(
         TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories,
+        ImmutableSet<PathFragment> excludedSubdirectories,
         BatchCallback<T, E> callback)
         throws TargetParsingException, E, InterruptedException {
       Preconditions.checkArgument(excludedSubdirectories.isEmpty(),
@@ -364,7 +353,7 @@ public abstract class TargetPattern implements Serializable {
     @Override
     public <T, E extends Exception> void eval(
         TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories,
+        ImmutableSet<PathFragment> excludedSubdirectories,
         BatchCallback<T, E> callback)
         throws TargetParsingException, E, InterruptedException {
       Preconditions.checkArgument(excludedSubdirectories.isEmpty(),
@@ -474,7 +463,7 @@ public abstract class TargetPattern implements Serializable {
     @Override
     public <T, E extends Exception> void eval(
         TargetPatternResolver<T> resolver,
-        ImmutableSet<String> excludedSubdirectories,
+        ImmutableSet<PathFragment> excludedSubdirectories,
         BatchCallback<T, E> callback)
         throws TargetParsingException, E, InterruptedException {
       resolver.findTargetsBeneathDirectory(

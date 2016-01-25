@@ -9,6 +9,10 @@ filegroup(
 java_library(
     name = "libSingleJar",
     srcs = glob(["java/**/singlejar/**/*.java"]),
+    visibility = [
+        "//src:__subpackages__",
+        "//third_party/java/apkbuilder:__pkg__",
+    ],
     deps = [
         "//src/java_tools/singlejar/java/com/google/devtools/build/zip",
         "//src/main/java/com/google/devtools/build/lib:shell",
@@ -25,7 +29,7 @@ java_binary(
 java_test(
     name = "tests",
     srcs = glob(["javatests/**/singlejar/**/*.java"]),
-    args = ["com.google.devtools.build.singlejar.SingleJarTests"],
+    test_class = "com.google.devtools.build.singlejar.SingleJarTests",
     deps = [
         ":libSingleJar",
         "//src/java_tools/singlejar/java/com/google/devtools/build/zip",
@@ -42,8 +46,8 @@ java_test(
     name = "zipTests",
     size = "enormous",
     srcs = glob(["javatests/**/zip/**/*.java"]),
-    args = ["com.google.devtools.build.zip.ZipTests"],
     tags = ["zip"],
+    test_class = "com.google.devtools.build.zip.ZipTests",
     deps = [
         "//src/java_tools/singlejar/java/com/google/devtools/build/zip",
         "//src/test/java/com/google/devtools/build/lib:testutil",
