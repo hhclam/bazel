@@ -19,10 +19,14 @@ import com.google.common.eventbus.Subscribe;
 import com.google.devtools.build.lib.actions.ActionContextProvider;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildStartingEvent;
+import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.runtime.BlazeModule;
 import com.google.devtools.build.lib.runtime.Command;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.common.options.OptionsBase;
+
+import java.net.URISyntaxException;
+import java.net.URI;
 
 /**
  * RemoteModule provides distributed cache and remote execution for Bazel.
@@ -37,11 +41,8 @@ public final class RemoteModule extends BlazeModule {
 
   @Override
   public Iterable<ActionContextProvider> getActionContextProviders() {
-    if (actionCache != null) {
-      return ImmutableList.<ActionContextProvider>of(
-          new RemoteActionContextProvider(env, buildRequest, actionCache, workExecutor));
-    }
-    return ImmutableList.<ActionContextProvider>of();
+    return ImmutableList.<ActionContextProvider>of(
+        new RemoteActionContextProvider(env, buildRequest, actionCache, workExecutor));
   }
 
   @Override
@@ -63,12 +64,21 @@ public final class RemoteModule extends BlazeModule {
 
     // Don't provide the remote spawn unless at least action cache is initialized.
     if (actionCache == null && options.hazelcastNode != null) {
-      actionCache =
-          new MemcacheActionCache(
-              this.env.getRuntime().getExecRoot(),
-              options,
-              HazelcastCacheFactory.create(options));
-      // TODO(alpha): Initialize a RemoteWorkExecutor.
+      MemcacheActionCache cache = new MemcacheActionCache(
+          this.env.getRuntime().getExecRoot(), options,
+          new HazelcastCacheFactory().create(options));
+      actionCache = cache;
+      if (workExecutor == null && options.remoteWorker != null) {
+        try {
+          URI uri = new URI("dummy://" + options.remoteWorker);
+          if (uri.getHost() == null || uri.getPort() == -1) {
+            throw new URISyntaxException("Invalid host or port.", "");
+          }
+          workExecutor = new MemcacheWorkExecutor(cache, uri.getHost(), uri.getPort());
+        } catch (URISyntaxException e) {
+          env.getReporter().handle(Event.warn("Invalid argument for the address of remote worker."));
+        }
+      }
     }
   }
 

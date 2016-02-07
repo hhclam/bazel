@@ -12,28 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.google.devtools.build.lib.remote;
+package com.google.devtools.build.remote;
 
 import com.google.devtools.common.options.Option;
 import com.google.devtools.common.options.OptionsBase;
 
 /**
- * Options for remote execution and distributed caching.
+ * Options for remote worker.
  */
-public final class RemoteOptions extends OptionsBase {
+public class RemoteWorkerOptions extends OptionsBase {
   @Option(
-    name = "hazelcast_node",
-    defaultValue = "null",
-    category = "remote",
-    help = "A comma separated list of hostnames of hazelcast nodes. For client mode only."
+    name = "listen_port",
+    defaultValue = "8080",
+    category = "build_worker",
+    help = "Listening port for the netty server."
   )
-  public String hazelcastNode;
-
+  public int listenPort;
+ 
   @Option(
-    name = "remote_worker",
+    name = "work_path",
     defaultValue = "null",
-    category = "remote",
-    help = "Hostname and pot number of remote worker in for form of host:port. For client mode only."
+    category = "build_worker",
+    help = "A directory for the build worker to do work."
   )
-  public String remoteWorker;
+  public String workPath;
+ 
+  @Option(
+    name = "debug",
+    defaultValue = "false",
+    category = "build_worker",
+    help = "Turn this one for debugging remote job failure. There will be extra messages and the " +
+           "work directory will be preserved in the case of failure."
+  )
+  public boolean debug;
 }

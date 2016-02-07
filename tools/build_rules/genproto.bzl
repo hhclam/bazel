@@ -25,6 +25,8 @@ def gensrcjar_impl(ctx):
         "JAR='%s'" % ctx.executable._jar.path,
         "OUTPUT='%s'" % out.path,
         "PROTO_COMPILER='%s'" % ctx.executable._proto_compiler.path,
+        "GRPC_JAVA_PLUGIN='%s'" % ctx.executable.grpc_java_plugin.path if \
+	    ctx.executable.grpc_java_plugin else "",
         "SOURCE='%s'" % ctx.file.src.path,
         ctx.executable._gensrcjar.path,
     ]),
@@ -41,6 +43,11 @@ gensrcjar = rule(
     attrs = {
         "src": attr.label(
             allow_files = proto_filetype,
+            single_file = True,
+        ),
+        "grpc_java_plugin": attr.label(
+            cfg = HOST_CFG,
+            executable = True,
             single_file = True,
         ),
         "_gensrcjar": attr.label(
@@ -74,12 +81,19 @@ gensrcjar = rule(
 )
 
 # TODO(bazel-team): support proto => proto dependencies too
-def java_proto_library(name, src):
-  gensrcjar(name=name + "_srcjar", src=src)
+def java_proto_library(name, src, use_grpc_plugin=False):
+  grpc_java_plugin = None
+  if use_grpc_plugin:
+    grpc_java_plugin = "//external:grpc-java-plugin"
+  gensrcjar(name=name + "_srcjar", src=src, grpc_java_plugin=grpc_java_plugin)
+
+  deps = ["@bazel_tools//third_party/protobuf"]
+  if use_grpc_plugin:
+    deps += ["//external:grpc-jar", "//external:guava"]
   native.java_library(
     name=name,
     srcs=[name + "_srcjar"],
-    deps=["@bazel_tools//third_party/protobuf"],
+    deps=deps,
     # The generated code has lots of 'rawtypes' warnings.
     javacopts=["-Xlint:-rawtypes"],
 )

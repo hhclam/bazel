@@ -18,7 +18,6 @@ FILES = [
     "xcodegen",
     "worker_protocol",
     "invocation_policy",
-    "remote_protocol",
     "apk_manifest",
 ]
 
@@ -26,6 +25,12 @@ FILES = [
     name = s + "_java_proto",
     src = s + ".proto",
 ) for s in FILES]
+
+java_proto_library(
+    name = "remote_protocol_java_proto",
+    src = "remote_protocol.proto",
+    use_grpc_plugin = True,
+)
 
 py_proto_library(
     name = "build_pb_py",
