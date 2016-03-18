@@ -74,8 +74,7 @@ py_proto_library(
     default_runtime = "",
     protoc = ":protoc",
     py_libs = [
-        ":python_srcs",
-        "//third_party/py/six",
+        "//third_party/py/six"
     ],
     srcs_version = "PY2AND3",
 )
