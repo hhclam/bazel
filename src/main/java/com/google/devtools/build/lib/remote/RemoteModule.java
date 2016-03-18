@@ -39,7 +39,7 @@ public final class RemoteModule extends BlazeModule {
   @Override
   public Iterable<ActionContextProvider> getActionContextProviders() {
     if (actionCache == null) {
-      env.getReporter().handle(Event.error(
+      env.getReporter().handle(Event.warning(
         "Remote action cache doesn't exist, using the standalone strategy"));
     }
     return ImmutableList.<ActionContextProvider>of(
