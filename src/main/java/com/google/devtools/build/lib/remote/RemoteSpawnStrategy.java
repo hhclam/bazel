@@ -78,7 +78,7 @@ final class RemoteSpawnStrategy implements SpawnActionContext {
   @Override
   public void exec(Spawn spawn, ActionExecutionContext actionExecutionContext)
       throws ExecException {
-    if (!spawn.isRemotable()) {
+    if (!spawn.isRemotable() || remoteActionCache == null) {
       standaloneStrategy.exec(spawn, actionExecutionContext);
       return;
     }

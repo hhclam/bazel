@@ -21,6 +21,7 @@ import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildStartingEvent;
 import com.google.devtools.build.lib.runtime.BlazeModule;
 import com.google.devtools.build.lib.runtime.Command;
+import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.common.options.OptionsBase;
 
@@ -37,11 +38,12 @@ public final class RemoteModule extends BlazeModule {
 
   @Override
   public Iterable<ActionContextProvider> getActionContextProviders() {
-    if (actionCache != null) {
-      return ImmutableList.<ActionContextProvider>of(
-          new RemoteActionContextProvider(env, buildRequest, actionCache, workExecutor));
+    if (actionCache == null) {
+      env.getReporter().handle(Event.error(
+        "Remote action cache doesn't exist, using the standalone strategy"));
     }
-    return ImmutableList.<ActionContextProvider>of();
+    return ImmutableList.<ActionContextProvider>of(
+      new RemoteActionContextProvider(env, buildRequest, actionCache, workExecutor));
   }
 
   @Override
