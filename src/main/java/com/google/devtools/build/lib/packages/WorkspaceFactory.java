@@ -500,7 +500,7 @@ public class WorkspaceFactory {
       if (jreDirectory.getName().toLowerCase() == "jre") {
         workspaceEnv.update("DEFAULT_SERVER_JAVABASE", jreDirectory.getParentFile().toString());
       } else {
-        // Mostly this is running on JDK 9 which does not have jre/ directory.
+        // Most likely this is running on JDK 9 or above which does not have jre/ directory.
         workspaceEnv.update("DEFAULT_SERVER_JAVABASE", jreDirectory.toString());
       }
 

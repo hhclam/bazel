@@ -599,7 +599,7 @@ static void VerifyJavaVersionAndSetJvm() {
 
 // Starts the Blaze server.
 static int StartServer(const WorkspaceLayout *workspace_layout,
-                       BlazeServerStartup **server_startup) {
+                        BlazeServerStartup **server_startup) {
   vector<string> jvm_args_vector = GetArgumentArray();
   string argument_string = GetArgumentString(jvm_args_vector);
   string server_dir =
@@ -718,8 +718,8 @@ static void SetRestartReasonIfNotSet(RestartReason restart_reason) {
 }
 
 // Starts up a new server and connects to it. Exits if it didn't work out.
-static void StartServerAndConnect(
-    const WorkspaceLayout *workspace_layout, BlazeServer *server) {
+static void StartServerAndConnect(const WorkspaceLayout *workspace_layout,
+                                  BlazeServer *server) {
   string server_dir =
       blaze_util::JoinPath(globals->options->output_base, "server");
 
@@ -1130,7 +1130,7 @@ static void CancelServer() { blaze_server->Cancel(); }
 // Performs all I/O for a single client request to the server, and
 // shuts down the client (by exit or signal).
 static ATTRIBUTE_NORETURN void SendServerRequest(
-  const WorkspaceLayout *workspace_layout, BlazeServer *server) {
+    const WorkspaceLayout *workspace_layout, BlazeServer *server) {
   while (true) {
     if (!server->Connected()) {
       StartServerAndConnect(workspace_layout, server);

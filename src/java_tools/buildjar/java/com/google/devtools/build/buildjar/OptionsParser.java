@@ -203,7 +203,7 @@ public final class OptionsParser {
         case "--testonly":
           testOnly = true;
           break;
-        // Java 9 new options that begins with --.
+        // Java 9 new options that begin with --.
         // Only the ones that are useful for modifying JDK internal modules are listed here.
         // They are needed for compiling code that uses JDK internals.
         case "--patch-module":
