@@ -109,8 +109,18 @@ filegroup(
 )
 
 filegroup(
+    name = "javabuilder_nojavac",
+    srcs = ["//tools/jdk:JavaBuilderNoJavac_deploy.jar"],
+)
+
+filegroup(
     name = "vanillajavabuilder",
     srcs = ["//tools/jdk:VanillaJavaBuilder_deploy.jar"],
+)
+
+filegroup(
+    name = "dummy",
+    srcs = ["//tools/jdk:libdummy.jar"],
 )
 
 BOOTCLASS_JARS = [
@@ -193,6 +203,43 @@ java_toolchain(
     singlejar = ["@bazel_tools//tools/jdk:singlejar"],
     source_version = "8",
     target_version = "8",
+)
+
+java_toolchain(
+    name = "jdk9",
+    bootclasspath = [],
+    compatible_javacopts = {
+        # Restrict protos to Java 7 so that they are compatible with Android.
+        "proto": [
+            "-source",
+            "7",
+            "-target",
+            "7",
+            "-XDallowBetterNullChecks=false",
+        ],
+    },
+    encoding = "UTF-8",
+    extclasspath = [":extclasspath"],
+    forcibly_disable_header_compilation = 1,
+    genclass = ["@bazel_tools//tools/jdk:genclass"],
+    header_compiler = ["@bazel_tools//tools/jdk:turbine"],
+    ijar = ["@bazel_tools//tools/jdk:ijar"],
+    javabuilder = ["@bazel_tools//tools/jdk:javabuilder_nojavac"],
+    javac = ["@bazel_tools//tools/jdk:dummy"],
+    javac_supports_workers = 1,
+    jvm_opts = [
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "-XX:+TieredCompilation",
+        "-XX:TieredStopAtLevel=1",
+    ],
+    misc = [
+        "-XDskipDuplicateBridges=true",
+        "-g",
+        "-parameters",
+    ],
+    singlejar = ["@bazel_tools//tools/jdk:singlejar"],
+    source_version = "9",
+    target_version = "9",
 )
 
 filegroup(

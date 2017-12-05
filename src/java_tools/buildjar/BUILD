@@ -27,9 +27,24 @@ java_binary(
     runtime_deps = ["//src/java_tools/buildjar/java/com/google/devtools/build/buildjar:vanilla_java_builder"],
 )
 
+java_library(
+    name = "dummy",
+)
+
 filegroup(
     name = "JavaBuilderDeploy",
     srcs = [":JavaBuilder_deploy.jar"],
+    tags = ["manual"],
+)
+
+genrule(
+    name = "JavaBuilderNoJavacDeploy",
+    srcs = [":JavaBuilder_deploy.jar"],
+    outs = ["JavaBuilderNoJavac_deploy.jar"],
+    # Strip away the known classes from javac.jar.
+    cmd =
+      "cp $< $@ && chmod u+w $@ && zip $@ " +
+      "-d jdk/\* com/sun/\* > /dev/null",
     tags = ["manual"],
 )
 

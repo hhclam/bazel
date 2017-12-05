@@ -331,6 +331,11 @@ static vector<string> GetArgumentArray() {
   globals->options->AddJVMArgumentPrefix(
       blaze_util::Dirname(blaze_util::Dirname(globals->jvm_path)), &result);
 
+  if (CheckJavaVersionIsAtLeast(globals->jvm_version, "9.0")) {
+    result.push_back("--illegal-access=warn");
+    // Suppress Java 9 illegal access warning.
+    result.push_back("--add-opens=java.base/java.nio=ALL-UNNAMED");
+  }
   result.push_back("-XX:+HeapDumpOnOutOfMemoryError");
   string heap_crash_path = globals->options->output_base;
   result.push_back("-XX:HeapDumpPath=" + blaze::PathAsJvmFlag(heap_crash_path));
@@ -561,17 +566,18 @@ static void GoToWorkspace(const WorkspaceLayout *workspace_layout) {
 }
 
 // Check the java version if a java version specification is bundled. On
-// success, returns the executable path of the java command.
+// success, outputs java executable path and the current jvm version.
 static void VerifyJavaVersionAndSetJvm() {
   string exe = globals->options->GetJvm();
 
   string version_spec_file = blaze_util::JoinPath(
       GetEmbeddedBinariesRoot(globals->options->install_base), "java.version");
-  string version_spec = "";
+  string version_spec;
+  string jvm_version;
   if (blaze_util::ReadFile(version_spec_file, &version_spec)) {
     blaze_util::StripWhitespace(&version_spec);
     // A version specification is given, get version of java.
-    string jvm_version = GetJvmVersion(exe);
+    jvm_version = GetJvmVersion(exe);
 
     // Compare that jvm_version is found and at least the one specified.
     if (jvm_version.empty()) {
@@ -588,11 +594,12 @@ static void VerifyJavaVersionAndSetJvm() {
   }
 
   globals->jvm_path = exe;
+  globals->jvm_version = jvm_version;
 }
 
 // Starts the Blaze server.
 static int StartServer(const WorkspaceLayout *workspace_layout,
-                        BlazeServerStartup **server_startup) {
+                       BlazeServerStartup **server_startup) {
   vector<string> jvm_args_vector = GetArgumentArray();
   string argument_string = GetArgumentString(jvm_args_vector);
   string server_dir =
@@ -711,8 +718,8 @@ static void SetRestartReasonIfNotSet(RestartReason restart_reason) {
 }
 
 // Starts up a new server and connects to it. Exits if it didn't work out.
-static void StartServerAndConnect(const WorkspaceLayout *workspace_layout,
-                                  BlazeServer *server) {
+static void StartServerAndConnect(
+    const WorkspaceLayout *workspace_layout, BlazeServer *server) {
   string server_dir =
       blaze_util::JoinPath(globals->options->output_base, "server");
 
@@ -1123,7 +1130,7 @@ static void CancelServer() { blaze_server->Cancel(); }
 // Performs all I/O for a single client request to the server, and
 // shuts down the client (by exit or signal).
 static ATTRIBUTE_NORETURN void SendServerRequest(
-    const WorkspaceLayout *workspace_layout, BlazeServer *server) {
+  const WorkspaceLayout *workspace_layout, BlazeServer *server) {
   while (true) {
     if (!server->Connected()) {
       StartServerAndConnect(workspace_layout, server);

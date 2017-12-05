@@ -497,7 +497,12 @@ public class WorkspaceFactory {
         workspaceEnv.update("__workspace_dir__", workspaceDir.getPathString());
       }
       File jreDirectory = new File(System.getProperty("java.home"));
-      workspaceEnv.update("DEFAULT_SERVER_JAVABASE", jreDirectory.getParentFile().toString());
+      if (jreDirectory.getName().toLowerCase() == "jre") {
+        workspaceEnv.update("DEFAULT_SERVER_JAVABASE", jreDirectory.getParentFile().toString());
+      } else {
+        // Mostly this is running on JDK 9 which does not have jre/ directory.
+        workspaceEnv.update("DEFAULT_SERVER_JAVABASE", jreDirectory.toString());
+      }
 
       for (EnvironmentExtension extension : environmentExtensions) {
         extension.updateWorkspace(workspaceEnv);
